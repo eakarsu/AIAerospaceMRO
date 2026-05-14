@@ -54,7 +54,7 @@ function AuditLog({ token }) {
     try {
       const res = await fetch(`${API}/audit-log`);
       const data = await res.json();
-      setItems(Array.isArray(data) ? data : []);
+      setItems(data.records || (Array.isArray(data) ? data : []));
     } catch {
       showToast('Failed to load audit log entries', 'error');
     } finally {

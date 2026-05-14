@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
+const auth = require('../middleware/auth');
+
+router.use(auth);
 
 // GET /stats/summary - counts by status, counts by training_type, expiring soon (within 90 days)
 // (must be defined before /:id to avoid route conflict)

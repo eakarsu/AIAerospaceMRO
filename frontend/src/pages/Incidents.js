@@ -47,7 +47,7 @@ function Incidents({ token }) {
       const res = await fetch(`${API}/incidents`);
       if (!res.ok) throw new Error('Failed to fetch incidents');
       const data = await res.json();
-      setItems(Array.isArray(data) ? data : []);
+      setItems(data.records || (Array.isArray(data) ? data : []));
     } catch (err) {
       setError(err.message);
     } finally {

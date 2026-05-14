@@ -13,6 +13,8 @@ const emptyForm = {
 
 function WorkOrders({ token }) {
   const [items, setItems] = useState([]);
+  const [pagination, setPagination] = useState(null);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
@@ -38,14 +40,16 @@ function WorkOrders({ token }) {
     return num.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
   };
 
-  const fetchItems = async () => {
+  const fetchItems = async (pg = page) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API}/work-orders`);
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await fetch(`${API}/work-orders?page=${pg}&limit=20`, { headers });
       if (!res.ok) throw new Error('Failed to fetch work orders');
       const data = await res.json();
-      setItems(Array.isArray(data) ? data : []);
+      setItems(data.records || (Array.isArray(data) ? data : []));
+      if (data.pagination) setPagination(data.pagination);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -53,7 +57,7 @@ function WorkOrders({ token }) {
     }
   };
 
-  useEffect(() => { fetchItems(); }, []);
+  useEffect(() => { fetchItems(page); }, [page]); // eslint-disable-line
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -217,6 +221,17 @@ function WorkOrders({ token }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {pagination && pagination.totalPages > 1 && (
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 16, alignItems: 'center' }}>
+          <button className="btn btn-secondary btn-sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Prev</button>
+          <span style={{ padding: '6px 12px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+            Page {page} of {pagination.totalPages} ({pagination.total} total)
+          </span>
+          <button className="btn btn-secondary btn-sm" onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))} disabled={page === pagination.totalPages}>Next</button>
         </div>
       )}
 

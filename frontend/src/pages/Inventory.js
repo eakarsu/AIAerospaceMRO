@@ -48,7 +48,7 @@ function Inventory({ token }) {
       const res = await fetch(`${API}/inventory`);
       if (!res.ok) throw new Error('Failed to fetch inventory');
       const data = await res.json();
-      setItems(Array.isArray(data) ? data : []);
+      setItems(data.records || (Array.isArray(data) ? data : []));
     } catch (err) {
       setError(err.message);
     } finally {

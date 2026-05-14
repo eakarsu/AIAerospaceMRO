@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
+const auth = require('../middleware/auth');
+
+router.use(auth);
 
 // GET /compliance/stats/summary - Counts by status and overdue items
 router.get('/stats/summary', async (req, res) => {
@@ -33,13 +36,29 @@ router.get('/stats/summary', async (req, res) => {
   }
 });
 
-// GET /compliance - List all compliance records ordered by due date
+// GET /compliance - List all compliance records ordered by due date (supports ?page=1&limit=20)
 router.get('/', async (req, res) => {
   try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const offset = (page - 1) * limit;
+
+    const countResult = await pool.query('SELECT COUNT(*)::int AS total FROM compliance_records');
+    const total = countResult.rows[0].total;
+
     const result = await pool.query(
-      'SELECT * FROM compliance_records ORDER BY due_date ASC'
+      'SELECT * FROM compliance_records ORDER BY due_date ASC LIMIT $1 OFFSET $2',
+      [limit, offset]
     );
-    res.json(result.rows);
+    res.json({
+      records: result.rows,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
   } catch (error) {
     console.error('Error fetching compliance records:', error);
     res.status(500).json({ error: 'Failed to fetch compliance records' });

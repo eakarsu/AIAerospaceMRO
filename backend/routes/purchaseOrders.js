@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
+const auth = require('../middleware/auth');
+
+router.use(auth);
 
 // GET /stats/summary - counts by status, total spend, counts by payment_status, pending deliveries
 // (must be defined before /:id to avoid route conflict)

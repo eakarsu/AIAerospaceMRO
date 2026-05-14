@@ -81,7 +81,7 @@ function PartLifecycle({ token }) {
     try {
       const res = await fetch(`${API}/part-lifecycle`);
       const data = await res.json();
-      setItems(Array.isArray(data) ? data : []);
+      setItems(data.records || (Array.isArray(data) ? data : []));
     } catch {
       showToast('Failed to load parts', 'error');
     } finally {

@@ -21,6 +21,14 @@ import HangarManagement from './pages/HangarManagement';
 import TrainingRecords from './pages/TrainingRecords';
 import Customers from './pages/Customers';
 import WarrantyTracking from './pages/WarrantyTracking';
+import CostEstimator from './pages/CostEstimator';
+import PredictiveMaintenance from './pages/PredictiveMaintenance';
+import TechnicianMatcher from './pages/TechnicianMatcher';
+import ComponentReliability from './pages/ComponentReliability';
+import AITools from './pages/AITools';
+import TechnicianWorkload from './pages/TechnicianWorkload';
+import ComplianceCalendar from './pages/ComplianceCalendar';
+import AIHistory from './pages/AIHistory';
 import Layout from './components/Layout';
 
 const API = 'http://localhost:4000/api';
@@ -73,6 +81,14 @@ function App() {
         <Route path="/training-records" element={<TrainingRecords token={token} />} />
         <Route path="/customers" element={<Customers token={token} />} />
         <Route path="/warranty-tracking" element={<WarrantyTracking token={token} />} />
+        <Route path="/cost-estimator" element={<CostEstimator token={token} />} />
+        <Route path="/predict-maintenance" element={<PredictiveMaintenance token={token} />} />
+        <Route path="/technician-matcher" element={<TechnicianMatcher token={token} />} />
+        <Route path="/component-reliability" element={<ComponentReliability token={token} />} />
+        <Route path="/ai-tools" element={<AITools token={token} />} />
+        <Route path="/technician-workload" element={<TechnicianWorkload token={token} />} />
+        <Route path="/compliance-calendar" element={<ComplianceCalendar token={token} />} />
+        <Route path="/ai-history" element={<AIHistory token={token} />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Layout>

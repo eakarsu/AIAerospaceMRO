@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
+const auth = require('../middleware/auth');
+
+router.use(auth);
 
 // GET /stats/summary - counts by status, overdue calibrations, tools by category (must be before /:id)
 router.get('/stats/summary', async (req, res) => {

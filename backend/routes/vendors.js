@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
+const auth = require('../middleware/auth');
+
+router.use(auth);
 
 // GET /stats/summary - counts by status, total spent, top vendors by rating
 // (must be defined before /:id to avoid route conflict)
@@ -36,13 +39,24 @@ router.get('/stats/summary', async (req, res) => {
   }
 });
 
-// GET / - list all vendors ordered by company_name ascending
+// GET / - list vendors with pagination
 router.get('/', async (req, res) => {
   try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const offset = (page - 1) * limit;
+
+    const countResult = await pool.query('SELECT COUNT(*)::int AS total FROM vendors');
+    const total = countResult.rows[0].total;
+
     const result = await pool.query(
-      'SELECT * FROM vendors ORDER BY company_name ASC'
+      'SELECT * FROM vendors ORDER BY company_name ASC LIMIT $1 OFFSET $2',
+      [limit, offset]
     );
-    res.json(result.rows);
+    res.json({
+      records: result.rows,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    });
   } catch (error) {
     console.error('Error fetching vendors:', error);
     res.status(500).json({ error: 'Failed to fetch vendors' });

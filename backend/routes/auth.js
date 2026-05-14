@@ -3,12 +3,23 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const auth = require('../middleware/auth');
+const { body, validationResult } = require('express-validator');
 const pool = require('../db');
 
 // @route   POST /api/auth/register
 // @desc    Register a new user
 // @access  Public
-router.post('/register', async (req, res) => {
+router.post('/register',
+  [
+    body('name').notEmpty().withMessage('name is required').isLength({ min: 2, max: 100 }),
+    body('email').isEmail().withMessage('valid email required').normalizeEmail(),
+    body('password').isLength({ min: 8 }).withMessage('password must be at least 8 characters')
+      .matches(/[A-Z]/).withMessage('password must contain at least one uppercase letter')
+      .matches(/[0-9]/).withMessage('password must contain at least one number')
+  ],
+  async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ error: 'Validation failed', details: errors.array() });
   const { name, email, password } = req.body;
 
   try {

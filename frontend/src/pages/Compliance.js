@@ -82,7 +82,7 @@ function Compliance({ token }) {
     try {
       const res = await fetch(`${API}/compliance`);
       const data = await res.json();
-      setItems(Array.isArray(data) ? data : []);
+      setItems(data.records || (Array.isArray(data) ? data : []));
     } catch {
       showToast('Failed to load compliance records', 'error');
     } finally {

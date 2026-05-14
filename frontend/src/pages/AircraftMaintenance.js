@@ -124,7 +124,7 @@ function AircraftMaintenance({ token }) {
       });
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
-      setItems(Array.isArray(data) ? data : []);
+      setItems(data.records || (Array.isArray(data) ? data : []));
     } catch (err) {
       showToast('Failed to load maintenance records', 'error');
       setItems([]);

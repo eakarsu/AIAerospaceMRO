@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
+const auth = require('../middleware/auth');
+
+router.use(auth);
 
 // GET /stats/summary - counts by status, counts by category, expiring soon (must be before /:id)
 router.get('/stats/summary', async (req, res) => {

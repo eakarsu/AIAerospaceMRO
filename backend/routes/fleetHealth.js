@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
+const auth = require('../middleware/auth');
+
+router.use(auth);
 
 // GET /stats/summary - average health score, counts by status levels, aircraft needing attention
 // (must be defined before /:id to avoid route conflict)
@@ -68,13 +71,24 @@ router.get('/stats/summary', async (req, res) => {
   }
 });
 
-// GET / - list all fleet health records ordered by health_score ascending
+// GET / - list fleet health records with pagination
 router.get('/', async (req, res) => {
   try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const offset = (page - 1) * limit;
+
+    const countResult = await pool.query('SELECT COUNT(*)::int AS total FROM fleet_health');
+    const total = countResult.rows[0].total;
+
     const result = await pool.query(
-      'SELECT * FROM fleet_health ORDER BY health_score ASC'
+      'SELECT * FROM fleet_health ORDER BY health_score ASC LIMIT $1 OFFSET $2',
+      [limit, offset]
     );
-    res.json(result.rows);
+    res.json({
+      records: result.rows,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    });
   } catch (error) {
     console.error('Error fetching fleet health records:', error);
     res.status(500).json({ error: 'Failed to fetch fleet health records' });

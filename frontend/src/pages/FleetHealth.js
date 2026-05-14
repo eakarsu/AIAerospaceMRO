@@ -76,7 +76,7 @@ function FleetHealth({ token }) {
       const res = await fetch(`${API}/fleet-health`);
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
-      setItems(Array.isArray(data) ? data : []);
+      setItems(data.records || (Array.isArray(data) ? data : []));
     } catch {
       showToast('Failed to load fleet data', 'error');
       setItems([]);
