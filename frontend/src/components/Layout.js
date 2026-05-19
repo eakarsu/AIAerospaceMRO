@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: '📊' },
+  { path: '/custom-views', label: 'Hangar Views', icon: '🏭' },
   // AI Tools
   { section: 'AI Tools' },
   { path: '/cost-estimator', label: 'Cost Estimator', icon: '💸' },

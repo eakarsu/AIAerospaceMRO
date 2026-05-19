@@ -112,3 +112,6 @@ app.use('/api/gap-mobile-technician-app-job-reference', require('./routes/gap_mo
 app.use('/api/gap-outbound-webhooks', require('./routes/gap_outbound_webhooks'));
 app.use('/api/gap-notifications-subsystem-visible', require('./routes/gap_notifications_subsystem_visible'));
 app.use('/api/gap-customer-portal-fleet-owner-visibility', require('./routes/gap_customer_portal_fleet_owner_visibility'));
+
+// Custom Views (Hangar Views) - 4 endpoints powering frontend custom-views page
+app.use('/api/custom-views', require('./routes/customViews'));

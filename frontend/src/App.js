@@ -29,9 +29,10 @@ import AITools from './pages/AITools';
 import TechnicianWorkload from './pages/TechnicianWorkload';
 import ComplianceCalendar from './pages/ComplianceCalendar';
 import AIHistory from './pages/AIHistory';
+import CustomViewsPage from './pages/CustomViewsPage';
 import Layout from './components/Layout';
 
-const API = 'http://localhost:4000/api';
+const API = (typeof window !== 'undefined' && window.__AERO_API__) || 'http://localhost:4047/api';
 
 function App() {
   const [user, setUser] = useState(() => {
@@ -89,6 +90,7 @@ function App() {
         <Route path="/technician-workload" element={<TechnicianWorkload token={token} />} />
         <Route path="/compliance-calendar" element={<ComplianceCalendar token={token} />} />
         <Route path="/ai-history" element={<AIHistory token={token} />} />
+        <Route path="/custom-views" element={<CustomViewsPage token={token} />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Layout>
