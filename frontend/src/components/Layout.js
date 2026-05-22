@@ -13,6 +13,7 @@ const navItems = [
   { path: '/ai-tools', label: 'AI Tools Hub', icon: '🧠' },
   { path: '/technician-workload', label: 'Tech Workload', icon: '📊' },
   { path: '/compliance-calendar', label: 'Compliance Cal.', icon: '📅' },
+  { path: '/etops-release-readiness', label: 'ETOPS Release', icon: '🛫' },
   { path: '/ai-history', label: 'AI History', icon: '🕑' },
   // Operations
   { section: 'Operations' },

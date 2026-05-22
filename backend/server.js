@@ -71,6 +71,7 @@ app.use('/api/customers', require('./routes/customers'));
 app.use('/api/warranty-tracking', require('./routes/warrantyTracking'));
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/analytics', require('./routes/analytics'));
+app.use('/api/etops-release-readiness', require('./routes/etopsReleaseReadiness'));
 
 // Health check
 app.get('/api/health', (req, res) => {

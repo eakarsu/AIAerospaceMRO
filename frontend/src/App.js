@@ -28,9 +28,13 @@ import ComponentReliability from './pages/ComponentReliability';
 import AITools from './pages/AITools';
 import TechnicianWorkload from './pages/TechnicianWorkload';
 import ComplianceCalendar from './pages/ComplianceCalendar';
+import EtopsReleaseReadiness from './pages/EtopsReleaseReadiness';
 import AIHistory from './pages/AIHistory';
 import CustomViewsPage from './pages/CustomViewsPage';
 import Layout from './components/Layout';
+
+import CodexCustomVizFeature from './pages/CodexCustomVizFeature';
+import CodexOperationsFeature from './pages/CodexOperationsFeature';
 
 const API = (typeof window !== 'undefined' && window.__AERO_API__) || 'http://localhost:4047/api';
 
@@ -62,6 +66,9 @@ function App() {
   return (
     <Layout user={user} onLogout={logout}>
       <Routes>
+        <Route path="/codex/custom-viz" element={<CodexCustomVizFeature />} />
+        <Route path="/codex/operations" element={<CodexOperationsFeature />} />
+
         <Route path="/" element={<Dashboard token={token} />} />
         <Route path="/maintenance" element={<AircraftMaintenance token={token} />} />
         <Route path="/parts" element={<PartLifecycle token={token} />} />
@@ -89,6 +96,7 @@ function App() {
         <Route path="/ai-tools" element={<AITools token={token} />} />
         <Route path="/technician-workload" element={<TechnicianWorkload token={token} />} />
         <Route path="/compliance-calendar" element={<ComplianceCalendar token={token} />} />
+        <Route path="/etops-release-readiness" element={<EtopsReleaseReadiness token={token} />} />
         <Route path="/ai-history" element={<AIHistory token={token} />} />
         <Route path="/custom-views" element={<CustomViewsPage token={token} />} />
         <Route path="*" element={<Navigate to="/" />} />
