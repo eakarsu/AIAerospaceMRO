@@ -2,10 +2,8 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 // Validate critical env vars at startup
-if (!process.env.JWT_SECRET) {
-  console.error('FATAL: JWT_SECRET environment variable is not set. Exiting.');
-  process.exit(1);
-}
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) throw new Error('JWT_SECRET must be at least 32 characters');
+if (!process.env.DATABASE_URL && !process.env.DB_PASSWORD) throw new Error('DATABASE_URL or DB_PASSWORD must be configured');
 
 const express = require('express');
 const cors = require('cors');
@@ -23,7 +21,7 @@ app.use(helmet());
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:3001',
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
@@ -72,6 +70,7 @@ app.use('/api/warranty-tracking', require('./routes/warrantyTracking'));
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/etops-release-readiness', require('./routes/etopsReleaseReadiness'));
+app.use('/api/release-workflows', require('./routes/releaseWorkflow'));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -81,8 +80,9 @@ app.get('/api/health', (req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err.stack || err.message);
-  res.status(err.status || 500).json({
-    error: err.message || 'Internal Server Error',
+  const status = err.status || 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Internal Server Error' : err.message,
   });
 });
 
@@ -94,25 +94,3 @@ app.listen(PORT, () => {
 });
 
 module.exports = { app, pool };
-
-// BATCH_00_AUDIT_MOUNTS
-app.use('/api/acars-stream', require('./routes/acarsStream'));
-app.use('/api/regulatory-feed', require('./routes/regulatoryFeed'));
-app.use('/api/supply-risk', require('./routes/supplyRisk'));
-app.use('/api/vr-training', require('./routes/vrTraining'));
-app.use('/api/oem-bridge', require('./routes/oemBridge'));
-
-// === Batch 00 Gaps & Frontend Mounts ===
-app.use('/api/gap-ai-training-path-recommendation-technician', require('./routes/gap_ai_training_path_recommendation_technician'));
-app.use('/api/gap-ai-supply-chain-disruption-forecasting', require('./routes/gap_ai_supply_chain_disruption_forecasting'));
-app.use('/api/gap-ai-cross-fleet-asset-reallocation', require('./routes/gap_ai_cross_fleet_asset_reallocation'));
-app.use('/api/gap-ai-hangar-bay-assignment-optimization', require('./routes/gap_ai_hangar_bay_assignment_optimization'));
-app.use('/api/gap-oem-data-bridge-boeing-airbus', require('./routes/gap_oem_data_bridge_boeing_airbus'));
-app.use('/api/gap-environmental-impact-carbon-footprint-reporting', require('./routes/gap_environmental_impact_carbon_footprint_reporting'));
-app.use('/api/gap-mobile-technician-app-job-reference', require('./routes/gap_mobile_technician_app_job_reference'));
-app.use('/api/gap-outbound-webhooks', require('./routes/gap_outbound_webhooks'));
-app.use('/api/gap-notifications-subsystem-visible', require('./routes/gap_notifications_subsystem_visible'));
-app.use('/api/gap-customer-portal-fleet-owner-visibility', require('./routes/gap_customer_portal_fleet_owner_visibility'));
-
-// Custom Views (Hangar Views) - 4 endpoints powering frontend custom-views page
-app.use('/api/custom-views', require('./routes/customViews'));

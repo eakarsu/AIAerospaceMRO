@@ -26,11 +26,6 @@ function Login({ onLogin }) {
     setLoading(false);
   };
 
-  const fillCredentials = () => {
-    setEmail('admin@aeromro.com');
-    setPassword('password123');
-  };
-
   return (
     <div className="login-container">
       <div className="login-card fade-in">
@@ -76,20 +71,7 @@ function Login({ onLogin }) {
             {loading ? 'Signing In...' : 'Sign In'}
           </button>
 
-          <button
-            type="button"
-            onClick={fillCredentials}
-            className="btn btn-secondary"
-            style={{ width: '100%', marginTop: '12px', padding: '10px' }}
-          >
-            Quick Login (Demo Credentials)
-          </button>
         </form>
-
-        <div style={{ marginTop: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-          <p>Demo Accounts: admin@aeromro.com / manager@aeromro.com / tech@aeromro.com</p>
-          <p>Password: password123</p>
-        </div>
       </div>
     </div>
   );
