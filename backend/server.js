@@ -36,6 +36,7 @@ const generalLimiter = rateLimit({
 app.use('/api/', generalLimiter);
 
 app.use(express.json({ limit: '2mb' }));
+app.use('/api', require('./runtimeAcceptance'));
 
 // Test database connection
 pool.query('SELECT NOW()', (err, res) => {
