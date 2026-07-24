@@ -6,6 +6,12 @@ require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const DB_NAME = process.env.DB_NAME || 'aerospace_mro';
 
+function requireDemoPassword() {
+  const password = process.env.DEMO_PASSWORD || process.env.SEED_DEMO_PASSWORD || process.env.DEMO_SEED_PASSWORD || '';
+  if (password.length < 12 || password.length > 1024) throw new Error('DEMO_PASSWORD must contain 12-1024 characters');
+  return password;
+}
+
 async function seed() {
   // ── Step 1: Drop / Create database ──────────────────────────────────
   const adminPool = new Pool({
@@ -421,7 +427,7 @@ async function seed() {
     console.log('\nAll tables created. Seeding data...\n');
 
     // ── Seed Users (3) ──────────────────────────────────────────────
-    const hashedPassword = await bcrypt.hash('password123', 10);
+    const hashedPassword = await bcrypt.hash(requireDemoPassword(), 10);
     await pool.query(`
       INSERT INTO users (name, email, password, role) VALUES
         ('Admin User', 'admin@aeromro.com', $1, 'admin'),
