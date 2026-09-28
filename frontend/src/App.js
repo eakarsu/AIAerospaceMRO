@@ -36,7 +36,7 @@ import Layout from './components/Layout';
 import CodexCustomVizFeature from './pages/CodexCustomVizFeature';
 import CodexOperationsFeature from './pages/CodexOperationsFeature';
 
-const API = (typeof window !== 'undefined' && window.__AERO_API__) || 'http://localhost:4047/api';
+const API = (typeof window !== 'undefined' && window.__AERO_API__) || '/api';
 
 function App() {
   const [user, setUser] = useState(() => {
