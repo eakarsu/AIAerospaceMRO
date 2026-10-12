@@ -1,3 +1,4 @@
+import { nativeRequest } from '../services/nativeRequest';
 import React, { useEffect, useState } from 'react';
 import { API } from '../App';
 
@@ -5,7 +6,7 @@ export default function EtopsReleaseReadiness({ token }) {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    fetch(`${API}/etops-release-readiness`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    nativeRequest(`${API}/etops-release-readiness`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
       .then((res) => res.json())
       .then(setData)
       .catch(() => setData(null));

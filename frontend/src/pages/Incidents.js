@@ -1,3 +1,6 @@
+import AIReport from '../components/AIReport';
+import { readRecordList } from '../services/nativeRecords';
+import useCancellableAIRequest from '../services/useCancellableAIRequest';
 import React, { useState, useEffect, useCallback } from 'react';
 import { API } from '../App';
 
@@ -24,6 +27,7 @@ function formatDate(d) {
 }
 
 function Incidents({ token }) {
+  const { request: nativeRequest, cancel: cancelAI, busy: aiRequestBusy } = useCancellableAIRequest();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -44,11 +48,12 @@ function Incidents({ token }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API}/incidents`);
+      const res = await nativeRequest(`${API}/incidents`);
       if (!res.ok) throw new Error('Failed to fetch incidents');
       const data = await res.json();
-      setItems(data.records || (Array.isArray(data) ? data : []));
+      setItems(readRecordList(data));
     } catch (err) {
+      if (err.name === 'AbortError') return;
       setError(err.message);
     } finally {
       setLoading(false);
@@ -95,7 +100,7 @@ function Incidents({ token }) {
       const body = { ...form };
       delete body._id;
 
-      const res = await fetch(url, {
+      const res = await nativeRequest(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -106,6 +111,7 @@ function Incidents({ token }) {
       setForm(emptyForm);
       fetchItems();
     } catch (err) {
+      if (err.name === 'AbortError') return;
       showToast(err.message, 'error');
     }
   };
@@ -113,12 +119,13 @@ function Incidents({ token }) {
   const handleDelete = async () => {
     if (!window.confirm('Are you sure you want to delete this incident?')) return;
     try {
-      const res = await fetch(`${API}/incidents/${selected._id || selected.id}`, { method: 'DELETE' });
+      const res = await nativeRequest(`${API}/incidents/${selected._id || selected.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete incident');
       showToast('Incident deleted successfully');
       setSelected(null);
       fetchItems();
     } catch (err) {
+      if (err.name === 'AbortError') return;
       showToast(err.message, 'error');
     }
   };
@@ -128,7 +135,7 @@ function Incidents({ token }) {
     setAiLoading(true);
     setAiResult(null);
     try {
-      const res = await fetch(`${API}/ai/safety-analysis`, {
+      const res = await nativeRequest(`${API}/ai/safety-analysis`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -143,6 +150,7 @@ function Incidents({ token }) {
       const data = await res.json();
       setAiResult(data);
     } catch (err) {
+      if (err.name === 'AbortError') return;
       showToast(err.message, 'error');
     } finally {
       setAiLoading(false);
@@ -156,8 +164,12 @@ function Incidents({ token }) {
 
   const setField = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
 
+  if (error && !loading) return <section className="native-load-error" role="alert"><h1>Records could not be loaded</h1><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></section>;
+
   return (
     <div className="fade-in">
+      {aiRequestBusy && <div role="status" className="ai-loading">Generating with OpenRouter… <button type="button" className="btn btn-secondary" onClick={cancelAI}>Cancel AI request</button></div>}
+      {error && <div role="alert" className="native-load-error"><strong>Records could not be loaded.</strong><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></div>}
       {toast && (
         <div className={`toast toast-${toast.type}`}>{toast.message}</div>
       )}
@@ -219,7 +231,7 @@ function Incidents({ token }) {
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '800px' }}>
             <div className="modal-header">
               <h2>{selected.title || 'Incident Details'}</h2>
-              <button className="btn btn-secondary btn-sm" onClick={() => setSelected(null)}>Close</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setSelected(null)}>Cancel</button>
             </div>
             <div className="modal-body">
               <div className="detail-grid">
@@ -289,15 +301,7 @@ function Incidents({ token }) {
                   {aiLoading ? 'Analyzing...' : 'Run AI Safety Analysis'}
                 </button>
                 {aiLoading && <div className="ai-loading">AI is analyzing this incident...</div>}
-                {aiResult && (
-                  <div className="ai-result">
-                    <h3>AI Safety Analysis</h3>
-                    <div className="ai-result-content">
-                      {typeof aiResult === 'string' ? aiResult :
-                        aiResult.analysis || aiResult.result || aiResult.message || JSON.stringify(aiResult, null, 2)}
-                    </div>
-                  </div>
-                )}
+                {aiResult && <AIReport response={aiResult} title="Incident safety review" />}
               </div>
             </div>
             <div className="modal-footer">

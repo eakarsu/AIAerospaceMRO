@@ -1,3 +1,4 @@
+import { nativeRequest } from '../services/nativeRequest';
 import React, { useState, useEffect } from 'react';
 import { API } from '../App';
 
@@ -13,7 +14,7 @@ function TechnicianWorkload({ token }) {
   const fetchWorkload = () => {
     setLoading(true);
     setError(null);
-    fetch(`${API}/technicians/workload?start=${start}&end=${end}`, { headers: authHeaders })
+    nativeRequest(`${API}/technicians/workload?start=${start}&end=${end}`, { headers: authHeaders })
       .then(r => r.json().then(d => ({ ok: r.ok, d })))
       .then(({ ok, d }) => {
         if (!ok) throw new Error(d.error || 'Failed');

@@ -1,3 +1,6 @@
+import AIReport from '../components/AIReport';
+import { readRecordList } from '../services/nativeRecords';
+import useCancellableAIRequest from '../services/useCancellableAIRequest';
 import React, { useState, useEffect, useCallback } from 'react';
 import { API } from '../App';
 
@@ -100,7 +103,9 @@ function parseAiResponse(text) {
 }
 
 function AircraftMaintenance({ token }) {
+  const { request: nativeRequest, cancel: cancelAI, busy: aiRequestBusy } = useCancellableAIRequest();
   const [items, setItems] = useState([]);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -117,16 +122,17 @@ function AircraftMaintenance({ token }) {
   }, []);
 
   const fetchItems = useCallback(async () => {
-    setLoading(true);
+    setLoading(true); setError('');
     try {
-      const res = await fetch(`${API}/aircraft-maintenance`, {
+      const res = await nativeRequest(`${API}/aircraft-maintenance`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
-      setItems(data.records || (Array.isArray(data) ? data : []));
+      setItems(readRecordList(data));
     } catch (err) {
-      showToast('Failed to load maintenance records', 'error');
+      if (err.name === 'AbortError') return;
+      setError(err.message || 'Records could not be loaded.');
       setItems([]);
     } finally {
       setLoading(false);
@@ -149,7 +155,7 @@ function AircraftMaintenance({ token }) {
         ...formData,
         estimated_hours: formData.estimated_hours ? Number(formData.estimated_hours) : null
       };
-      const res = await fetch(`${API}/aircraft-maintenance`, {
+      const res = await nativeRequest(`${API}/aircraft-maintenance`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -163,6 +169,7 @@ function AircraftMaintenance({ token }) {
       setFormData({ ...emptyForm });
       fetchItems();
     } catch (err) {
+      if (err.name === 'AbortError') return;
       showToast('Failed to create maintenance record', 'error');
     }
   };
@@ -176,7 +183,7 @@ function AircraftMaintenance({ token }) {
         estimated_hours: formData.estimated_hours ? Number(formData.estimated_hours) : null
       };
       const id = selectedItem._id || selectedItem.id;
-      const res = await fetch(`${API}/aircraft-maintenance/${id}`, {
+      const res = await nativeRequest(`${API}/aircraft-maintenance/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -191,6 +198,7 @@ function AircraftMaintenance({ token }) {
       setSelectedItem(null);
       fetchItems();
     } catch (err) {
+      if (err.name === 'AbortError') return;
       showToast('Failed to update maintenance record', 'error');
     }
   };
@@ -200,7 +208,7 @@ function AircraftMaintenance({ token }) {
     if (!window.confirm('Are you sure you want to delete this maintenance record? This action cannot be undone.')) return;
     try {
       const id = selectedItem._id || selectedItem.id;
-      const res = await fetch(`${API}/aircraft-maintenance/${id}`, {
+      const res = await nativeRequest(`${API}/aircraft-maintenance/${id}`, {
         method: 'DELETE',
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
@@ -210,6 +218,7 @@ function AircraftMaintenance({ token }) {
       setSelectedItem(null);
       fetchItems();
     } catch (err) {
+      if (err.name === 'AbortError') return;
       showToast('Failed to delete maintenance record', 'error');
     }
   };
@@ -219,7 +228,7 @@ function AircraftMaintenance({ token }) {
     setAiLoading(true);
     setAiResult(null);
     try {
-      const res = await fetch(`${API}/ai/downtime-prediction`, {
+      const res = await nativeRequest(`${API}/ai/downtime-prediction`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -229,9 +238,9 @@ function AircraftMaintenance({ token }) {
       });
       if (!res.ok) throw new Error('AI analysis failed');
       const data = await res.json();
-      const text = data.prediction || data.analysis || data.result || data.response || JSON.stringify(data, null, 2);
-      setAiResult(text);
+      setAiResult(data);
     } catch (err) {
+      if (err.name === 'AbortError') return;
       showToast('AI analysis failed. Please try again.', 'error');
     } finally {
       setAiLoading(false);
@@ -388,27 +397,7 @@ function AircraftMaintenance({ token }) {
 
     if (!aiResult) return null;
 
-    const sections = parseAiResponse(aiResult);
-
-    return (
-      <div className="ai-result">
-        <h3>AI Downtime Prediction Analysis</h3>
-        {sections.length > 0 ? (
-          sections.map((section, idx) => (
-            <div className="ai-section" key={idx}>
-              {section.title && <div className="ai-section-title">{section.title}</div>}
-              <div className="ai-result-content">
-                {section.content.map((line, i) => (
-                  <div key={i}>{line}</div>
-                ))}
-              </div>
-            </div>
-          ))
-        ) : (
-          <div className="ai-result-content">{aiResult}</div>
-        )}
-      </div>
-    );
+    return <AIReport response={aiResult} title="Downtime planning analysis" />;
   };
 
   const renderDetail = () => {
@@ -513,8 +502,12 @@ function AircraftMaintenance({ token }) {
 
   // --- Main Render ---
 
+  if (error && !loading) return <section className="native-load-error" role="alert"><h1>Records could not be loaded</h1><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></section>;
+
   return (
     <div className="fade-in">
+      {aiRequestBusy && <div role="status" className="ai-loading">Generating with OpenRouter… <button type="button" className="btn btn-secondary" onClick={cancelAI}>Cancel AI request</button></div>}
+      {error && <div role="alert" className="native-load-error"><strong>Records could not be loaded.</strong><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></div>}
       {/* Toast */}
       {toast && (
         <div className={`toast toast-${toast.type}`}>

@@ -1,3 +1,5 @@
+import { readRecordList } from '../services/nativeRecords';
+import { nativeRequest } from '../services/nativeRequest';
 import React, { useState, useEffect, useCallback } from 'react';
 import { API } from '../App';
 
@@ -76,6 +78,7 @@ function getRowStyle(status) {
 
 function ToolCalibration({ token }) {
   const [items, setItems] = useState([]);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -90,16 +93,16 @@ function ToolCalibration({ token }) {
   }, []);
 
   const fetchItems = useCallback(async () => {
-    setLoading(true);
+    setLoading(true); setError('');
     try {
-      const res = await fetch(`${API}/tool-calibration`, {
+      const res = await nativeRequest(`${API}/tool-calibration`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
-      setItems(Array.isArray(data) ? data : []);
+      setItems(readRecordList(data));
     } catch (err) {
-      showToast('Failed to load tool calibration records', 'error');
+      setError(err.message || 'Records could not be loaded.');
       setItems([]);
     } finally {
       setLoading(false);
@@ -122,7 +125,7 @@ function ToolCalibration({ token }) {
         ...formData,
         calibration_interval_days: formData.calibration_interval_days ? Number(formData.calibration_interval_days) : null
       };
-      const res = await fetch(`${API}/tool-calibration`, {
+      const res = await nativeRequest(`${API}/tool-calibration`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -149,7 +152,7 @@ function ToolCalibration({ token }) {
         calibration_interval_days: formData.calibration_interval_days ? Number(formData.calibration_interval_days) : null
       };
       const id = selectedItem._id || selectedItem.id;
-      const res = await fetch(`${API}/tool-calibration/${id}`, {
+      const res = await nativeRequest(`${API}/tool-calibration/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -173,7 +176,7 @@ function ToolCalibration({ token }) {
     if (!window.confirm('Are you sure you want to delete this tool calibration record? This action cannot be undone.')) return;
     try {
       const id = selectedItem._id || selectedItem.id;
-      const res = await fetch(`${API}/tool-calibration/${id}`, {
+      const res = await nativeRequest(`${API}/tool-calibration/${id}`, {
         method: 'DELETE',
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
@@ -478,8 +481,11 @@ function ToolCalibration({ token }) {
 
   // --- Main Render ---
 
+  if (error && !loading) return <section className="native-load-error" role="alert"><h1>Records could not be loaded</h1><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></section>;
+
   return (
     <div className="fade-in">
+      {error && <div role="alert" className="native-load-error"><strong>Records could not be loaded.</strong><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></div>}
       {/* Toast */}
       {toast && (
         <div className={`toast toast-${toast.type}`}>

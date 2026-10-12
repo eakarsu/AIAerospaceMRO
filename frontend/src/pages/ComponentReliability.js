@@ -1,3 +1,4 @@
+import { nativeRequest } from '../services/nativeRequest';
 import React, { useState, useEffect } from 'react';
 import { API } from '../App';
 
@@ -9,7 +10,7 @@ function ComponentReliability({ token }) {
   const fetchData = () => {
     setLoading(true);
     setError(null);
-    fetch(`${API}/analytics/component-reliability`, {
+    nativeRequest(`${API}/analytics/component-reliability`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {}
     })
       .then(r => r.json().then(d => ({ ok: r.ok, d })))

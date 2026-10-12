@@ -1,3 +1,5 @@
+import { readRecordList } from '../services/nativeRecords';
+import { nativeRequest } from '../services/nativeRequest';
 import React, { useState, useEffect } from 'react';
 import { API } from '../App';
 
@@ -17,10 +19,10 @@ function ComplianceCalendar({ token }) {
   const fetchAll = () => {
     setLoading(true);
     // Fetch all compliance records (high limit)
-    fetch(`${API}/compliance?limit=200&page=1`, { headers: authHeaders })
+    nativeRequest(`${API}/compliance?limit=200&page=1`, { headers: authHeaders })
       .then(r => r.json())
       .then(d => {
-        setRecords(d.records || (Array.isArray(d) ? d : []));
+        setRecords(readRecordList(d));
         setLoading(false);
       })
       .catch(err => { setError(err.message); setLoading(false); });

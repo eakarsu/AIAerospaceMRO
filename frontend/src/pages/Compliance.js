@@ -1,3 +1,6 @@
+import AIReport from '../components/AIReport';
+import { readRecordList } from '../services/nativeRecords';
+import useCancellableAIRequest from '../services/useCancellableAIRequest';
 import React, { useState, useEffect } from 'react';
 import { API } from '../App';
 
@@ -61,7 +64,9 @@ function formatDate(d) {
 }
 
 function Compliance({ token }) {
+  const { request: nativeRequest, cancel: cancelAI, busy: aiRequestBusy } = useCancellableAIRequest();
   const [items, setItems] = useState([]);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -78,13 +83,14 @@ function Compliance({ token }) {
   };
 
   const fetchItems = async () => {
-    setLoading(true);
+    setLoading(true); setError('');
     try {
-      const res = await fetch(`${API}/compliance`);
+      const res = await nativeRequest(`${API}/compliance`);
       const data = await res.json();
-      setItems(data.records || (Array.isArray(data) ? data : []));
-    } catch {
-      showToast('Failed to load compliance records', 'error');
+      setItems(readRecordList(data));
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      setError(err.message || 'Records could not be loaded.');
     } finally {
       setLoading(false);
     }
@@ -127,7 +133,7 @@ function Compliance({ token }) {
     const method = editMode ? 'PUT' : 'POST';
 
     try {
-      const res = await fetch(url, {
+      const res = await nativeRequest(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
@@ -145,7 +151,7 @@ function Compliance({ token }) {
   const handleDelete = async () => {
     if (!window.confirm('Are you sure you want to delete this compliance record?')) return;
     try {
-      const res = await fetch(`${API}/compliance/${selectedItem.id}`, { method: 'DELETE' });
+      const res = await nativeRequest(`${API}/compliance/${selectedItem.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
       showToast('Compliance record deleted');
       setShowDetail(false);
@@ -160,7 +166,7 @@ function Compliance({ token }) {
     setAiLoading(true);
     setAiResult(null);
     try {
-      const res = await fetch(`${API}/ai/compliance-check`, {
+      const res = await nativeRequest(`${API}/ai/compliance-check`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -171,8 +177,9 @@ function Compliance({ token }) {
         })
       });
       const data = await res.json();
-      setAiResult(data.analysis || 'No analysis returned.');
-    } catch {
+      setAiResult(data);
+    } catch (failure) {
+      if (failure.name === 'AbortError') return;
       showToast('AI analysis failed', 'error');
     } finally {
       setAiLoading(false);
@@ -189,8 +196,12 @@ function Compliance({ token }) {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  if (error && !loading) return <section className="native-load-error" role="alert"><h1>Records could not be loaded</h1><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></section>;
+
   return (
     <div className="fade-in">
+      {aiRequestBusy && <div role="status" className="ai-loading">Generating with OpenRouter… <button type="button" className="btn btn-secondary" onClick={cancelAI}>Cancel AI request</button></div>}
+      {error && <div role="alert" className="native-load-error"><strong>Records could not be loaded.</strong><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></div>}
       {toast && (
         <div className={`toast toast-${toast.type}`}>{toast.message}</div>
       )}
@@ -265,7 +276,7 @@ function Compliance({ token }) {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{selectedItem.directive_number} - {selectedItem.title}</h2>
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowDetail(false)}>Close</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowDetail(false)}>Cancel</button>
             </div>
             <div className="modal-body">
               {isOverdue(selectedItem) && (
@@ -359,21 +370,7 @@ function Compliance({ token }) {
                   <div className="ai-loading">Generating AI compliance analysis...</div>
                 )}
 
-                {aiResult && (
-                  <div className="ai-result">
-                    <h3>AI Compliance Analysis</h3>
-                    {parseAISections(aiResult).length > 1 ? (
-                      parseAISections(aiResult).map((section, i) => (
-                        <div key={i} className="ai-section">
-                          {section.title && <div className="ai-section-title">{section.title}</div>}
-                          <div className="ai-result-content">{section.content}</div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="ai-result-content">{aiResult}</div>
-                    )}
-                  </div>
-                )}
+                {aiResult && <AIReport response={aiResult} title="Compliance review" />}
               </div>
             </div>
             <div className="modal-footer">
@@ -390,7 +387,7 @@ function Compliance({ token }) {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{editMode ? 'Edit Compliance Record' : 'Add Compliance Record'}</h2>
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowForm(false)}>Close</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowForm(false)}>Cancel</button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">

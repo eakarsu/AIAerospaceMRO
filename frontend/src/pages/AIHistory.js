@@ -1,3 +1,6 @@
+import AIReport from '../components/AIReport';
+import { readRecordList } from '../services/nativeRecords';
+import { nativeRequest } from '../services/nativeRequest';
 import React, { useState, useEffect } from 'react';
 import { API } from '../App';
 
@@ -25,11 +28,11 @@ function AIHistory({ token }) {
     setError(null);
     const params = new URLSearchParams({ page: pg, limit: 20 });
     if (ep) params.set('endpoint', ep);
-    fetch(`${API}/ai/history?${params}`, { headers: authHeaders })
+    nativeRequest(`${API}/ai/native-history?${params}`, { headers: authHeaders })
       .then(r => r.json().then(d => ({ ok: r.ok, d })))
       .then(({ ok, d }) => {
         if (!ok) throw new Error(d.error || 'Failed');
-        setRecords(d.records || []);
+        setRecords(readRecordList(d));
         setPagination(d.pagination || null);
       })
       .catch(err => setError(err.message))
@@ -63,15 +66,15 @@ function AIHistory({ token }) {
         <button className="btn btn-secondary" onClick={() => fetchHistory(page, endpoint)} disabled={loading}>Refresh</button>
       </div>
 
-      {error && <div className="toast toast-error">{error}</div>}
+      {error && <section role="alert" className="native-load-error"><strong>AI history could not be loaded.</strong><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchHistory(page, endpoint)}>Retry</button></section>}
 
       {loading && <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)' }}>Loading AI history...</div>}
 
-      {!loading && records.length === 0 && (
+      {!loading && !error && records.length === 0 && (
         <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)' }}>No AI results found. Run some analyses to see history here.</div>
       )}
 
-      {records.length > 0 && (
+      {!error && records.length > 0 && (
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: 20 }}>
           <div className="table-container">
             <table>
@@ -105,19 +108,7 @@ function AIHistory({ token }) {
                     {expanded === r.id && (
                       <tr>
                         <td colSpan="6">
-                          <pre style={{
-                            background: 'var(--bg-hover)',
-                            border: '1px solid var(--border)',
-                            borderRadius: 4,
-                            padding: 12,
-                            fontSize: '0.78rem',
-                            overflow: 'auto',
-                            maxHeight: 400,
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-word'
-                          }}>
-                            {r.parsed_result ? JSON.stringify(r.parsed_result, null, 2) : 'No parsed result'}
-                          </pre>
+                          <AIReport response={r.parsed_result || r.raw_response || r.response} title={endpointLabel(r.endpoint)} />
                         </td>
                       </tr>
                     )}

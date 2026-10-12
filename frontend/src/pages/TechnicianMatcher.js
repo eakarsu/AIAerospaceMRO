@@ -1,19 +1,17 @@
+import useNativeSources from '../services/useNativeSources';
+import { readRecordList } from '../services/nativeRecords';
+import useCancellableAIRequest from '../services/useCancellableAIRequest';
+import CompleteAIExamples, { AIRequiredButton } from "../components/CompleteAIExamples";
 import React, { useState, useEffect } from 'react';
 import { API } from '../App';
 
 function TechnicianMatcher({ token }) {
-  const [workOrders, setWorkOrders] = useState([]);
+  const { request: nativeRequest, cancel: cancelAI, busy: aiRequestBusy } = useCancellableAIRequest();
+  const { rows: workOrders, loading: sourceLoading, error: sourceError, retry: retrySources } = useNativeSources(`${API}/work-orders?limit=100`, token);
   const [selectedWO, setSelectedWO] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [toast, setToast] = useState(null);
-
-  useEffect(() => {
-    fetch(`${API}/work-orders`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-      .then(r => r.json())
-      .then(d => setWorkOrders(d.records || (Array.isArray(d) ? d : [])))
-      .catch(() => {});
-  }, [token]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -25,7 +23,7 @@ function TechnicianMatcher({ token }) {
     setLoading(true);
     setResult(null);
     try {
-      const res = await fetch(`${API}/ai/match-technician`, {
+      const res = await nativeRequest(`${API}/ai/match-technician`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -38,6 +36,7 @@ function TechnicianMatcher({ token }) {
       setResult(data);
       setToast({ type: 'success', message: 'Match recommendation ready' });
     } catch (err) {
+      if (err.name === 'AbortError') return;
       setToast({ type: 'error', message: err.message });
     } finally {
       setLoading(false);
@@ -49,6 +48,7 @@ function TechnicianMatcher({ token }) {
 
   return (
     <div className="fade-in">
+      {aiRequestBusy && <div role="status" className="ai-loading">Generating with OpenRouter… <button type="button" className="btn btn-secondary" onClick={cancelAI}>Cancel AI request</button></div>}
       {toast && <div className={`toast toast-${toast.type}`}>{toast.message}</div>}
 
       <div className="page-header">
@@ -58,10 +58,13 @@ function TechnicianMatcher({ token }) {
         </div>
       </div>
 
-      <form onSubmit={submit} style={{ background: 'var(--bg-card)', padding: 24, borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+      {sourceError && <section role="alert" className="native-load-error"><strong>Work order sources could not be loaded.</strong><p>{sourceError}</p><button type="button" className="btn btn-secondary" onClick={retrySources}>Retry</button></section>}
+      {sourceLoading && <p role="status">Loading genuine saved work orders…</p>}
+      {!sourceLoading && !sourceError && !workOrders.length && <p role="status">Save a native work order before requesting a technician recommendation.</p>}
+      <CompleteAIExamples busy={loading || sourceLoading || Boolean(sourceError) || !workOrders.length} context="MRO technician review"><form onSubmit={submit} style={{ background: 'var(--bg-card)', padding: 24, borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
         <div className="form-group">
           <label>Work Order</label>
-          <select value={selectedWO} onChange={e => setSelectedWO(e.target.value)} required>
+          <select data-ai-field="work_order_id" value={selectedWO} onChange={e => setSelectedWO(e.target.value)} required>
             <option value="">-- Select a work order --</option>
             {workOrders.map(wo => (
               <option key={wo.id || wo._id} value={wo.id || wo._id}>
@@ -70,10 +73,10 @@ function TechnicianMatcher({ token }) {
             ))}
           </select>
         </div>
-        <button type="submit" className="btn btn-primary" disabled={loading}>
+        <AIRequiredButton data-ai-generate type="submit" className="btn btn-primary" disabled={loading}>
           {loading ? 'Matching...' : 'Find Best Technician'}
-        </button>
-      </form>
+        </AIRequiredButton>
+      </form></CompleteAIExamples>
 
       {loading && <div className="ai-loading" style={{ marginTop: 24 }}>Analyzing technician certifications...</div>}
 

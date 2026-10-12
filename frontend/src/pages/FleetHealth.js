@@ -1,3 +1,6 @@
+import AIReport from '../components/AIReport';
+import { readRecordList } from '../services/nativeRecords';
+import useCancellableAIRequest from '../services/useCancellableAIRequest';
 import React, { useState, useEffect, useCallback } from 'react';
 import { API } from '../App';
 
@@ -54,7 +57,9 @@ const parseAIResponse = (text) => {
 };
 
 function FleetHealth({ token }) {
+  const { request: nativeRequest, cancel: cancelAI, busy: aiRequestBusy } = useCancellableAIRequest();
   const [items, setItems] = useState([]);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -71,14 +76,15 @@ function FleetHealth({ token }) {
   }, []);
 
   const fetchItems = useCallback(async () => {
-    setLoading(true);
+    setLoading(true); setError('');
     try {
-      const res = await fetch(`${API}/fleet-health`);
+      const res = await nativeRequest(`${API}/fleet-health`);
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
-      setItems(data.records || (Array.isArray(data) ? data : []));
-    } catch {
-      showToast('Failed to load fleet data', 'error');
+      setItems(readRecordList(data));
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      setError(err.message || 'Records could not be loaded.');
       setItems([]);
     } finally {
       setLoading(false);
@@ -97,7 +103,7 @@ function FleetHealth({ token }) {
     const method = editMode ? 'PUT' : 'POST';
     const url = editMode ? `${API}/fleet-health/${selectedItem.id}` : `${API}/fleet-health`;
     try {
-      const res = await fetch(url, {
+      const res = await nativeRequest(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
@@ -116,7 +122,7 @@ function FleetHealth({ token }) {
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this aircraft record?')) return;
     try {
-      const res = await fetch(`${API}/fleet-health/${id}`, { method: 'DELETE' });
+      const res = await nativeRequest(`${API}/fleet-health/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
       showToast('Aircraft record deleted');
       setShowDetail(false);
@@ -169,15 +175,16 @@ function FleetHealth({ token }) {
     setAiResult(null);
     const summary = `Registration: ${selectedItem.aircraft_reg}, Type: ${selectedItem.aircraft_type}, Health Score: ${selectedItem.health_score}, Engine: ${selectedItem.engine_status}, Avionics: ${selectedItem.avionics_status}, Airframe: ${selectedItem.airframe_status}, Landing Gear: ${selectedItem.landing_gear_status}, APU: ${selectedItem.apu_status}, Flight Hours: ${selectedItem.total_flight_hours}, Cycles: ${selectedItem.total_cycles}`;
     try {
-      const res = await fetch(`${API}/ai/fleet-optimization`, {
+      const res = await nativeRequest(`${API}/ai/fleet-optimization`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fleet_data: summary })
       });
       if (!res.ok) throw new Error('AI request failed');
       const data = await res.json();
-      setAiResult(data.analysis || data.result || data.message || JSON.stringify(data));
-    } catch {
+      setAiResult(data);
+    } catch (failure) {
+      if (failure.name === 'AbortError') return;
       showToast('AI analysis failed', 'error');
     } finally {
       setAiLoading(false);
@@ -192,8 +199,12 @@ function FleetHealth({ token }) {
     { label: 'APU', status: selectedItem.apu_status }
   ] : [];
 
+  if (error && !loading) return <section className="native-load-error" role="alert"><h1>Records could not be loaded</h1><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></section>;
+
   return (
     <div className="fade-in">
+      {aiRequestBusy && <div role="status" className="ai-loading">Generating with OpenRouter… <button type="button" className="btn btn-secondary" onClick={cancelAI}>Cancel AI request</button></div>}
+      {error && <div role="alert" className="native-load-error"><strong>Records could not be loaded.</strong><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></div>}
       {toast && (
         <div className={`toast toast-${toast.type}`}>{toast.message}</div>
       )}
@@ -267,7 +278,7 @@ function FleetHealth({ token }) {
           <div className="modal" style={{ maxWidth: '800px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{selectedItem.aircraft_reg} - {selectedItem.aircraft_type}</h2>
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowDetail(false)}>Close</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowDetail(false)}>Cancel</button>
             </div>
             <div className="modal-body">
               {/* Health Gauge */}
@@ -331,19 +342,7 @@ function FleetHealth({ token }) {
                   {aiLoading ? 'Analyzing...' : 'Run AI Fleet Optimization Analysis'}
                 </button>
                 {aiLoading && <div className="ai-loading" style={{ marginTop: '16px' }}>AI is analyzing fleet data...</div>}
-                {aiResult && (
-                  <div className="ai-result" style={{ marginTop: '16px' }}>
-                    <h3>AI Fleet Optimization</h3>
-                    {parseAIResponse(aiResult).map((section, i) => (
-                      <div className="ai-section" key={i}>
-                        <div className="ai-section-title">{section.title}</div>
-                        <div className="ai-result-content" dangerouslySetInnerHTML={{
-                          __html: section.content.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                        }} />
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {aiResult && <AIReport response={aiResult} title="Fleet health analysis" />}
               </div>
             </div>
             <div className="modal-footer">

@@ -1,3 +1,4 @@
+import { nativeRequest } from '../services/nativeRequest';
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API } from '../App';
@@ -44,7 +45,7 @@ function Dashboard({ token }) {
 
   useEffect(() => {
     features.forEach(f => {
-      fetch(`${API}${f.api}`, { headers: authHeaders })
+      nativeRequest(`${API}${f.api}`, { headers: authHeaders })
         .then(r => r.json())
         .then(data => {
           // Handle both paginated { records, pagination } and raw arrays
@@ -55,7 +56,7 @@ function Dashboard({ token }) {
     });
 
     // Fetch AOG alerts
-    fetch(`${API}/analytics/aog-alerts`, { headers: authHeaders })
+    nativeRequest(`${API}/analytics/aog-alerts`, { headers: authHeaders })
       .then(r => r.json())
       .then(data => setAogAlerts(data))
       .catch(() => {});

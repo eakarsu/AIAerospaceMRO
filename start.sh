@@ -104,6 +104,10 @@ for port in "$BACKEND_PORT" "$FRONTEND_PORT"; do
   fi
 done
 
+node backend/scripts/native-demo.cjs
+node backend/scripts/native-report-planning.cjs
+node backend/scripts/native-parts-planning.cjs
+
 (cd backend && PORT="$BACKEND_PORT" npm start) &
 backend_pid=$!
 (cd frontend && HOST=127.0.0.1 PORT="$FRONTEND_PORT" VITE_API_BASE="http://127.0.0.1:$BACKEND_PORT/api" npm start) &

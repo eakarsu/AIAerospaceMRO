@@ -1,8 +1,10 @@
+import { readRecordList } from '../services/nativeRecords';
+import { nativeRequest } from '../services/nativeRequest';
 import React, { useState, useEffect, useCallback } from 'react';
 import { API } from '../App';
 
 const TRAINING_TYPES = ['Initial', 'Recurrent', 'Type Rating', 'Safety', 'Regulatory', 'OJT'];
-const STATUS_OPTIONS = ['Completed', 'In Progress', 'Expired', 'Scheduled'];
+const STATUS_OPTIONS = ['Draft', 'Completed', 'In Progress', 'Expired', 'Scheduled'];
 const PASS_FAIL_OPTIONS = ['Pass', 'Fail', 'Pending'];
 
 const emptyForm = {
@@ -44,6 +46,7 @@ const getRowHighlight = (expiry_date) => {
 
 function TrainingRecords({ token }) {
   const [items, setItems] = useState([]);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -58,14 +61,14 @@ function TrainingRecords({ token }) {
   }, []);
 
   const fetchItems = useCallback(async () => {
-    setLoading(true);
+    setLoading(true); setError('');
     try {
-      const res = await fetch(`${API}/training-records`);
+      const res = await nativeRequest(`${API}/training-records`);
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
-      setItems(Array.isArray(data) ? data : []);
-    } catch {
-      showToast('Failed to load training records', 'error');
+      setItems(readRecordList(data));
+    } catch (err) {
+      setError(err.message || 'Records could not be loaded.');
       setItems([]);
     } finally {
       setLoading(false);
@@ -84,7 +87,7 @@ function TrainingRecords({ token }) {
     const method = editMode ? 'PUT' : 'POST';
     const url = editMode ? `${API}/training-records/${selectedItem.id}` : `${API}/training-records`;
     try {
-      const res = await fetch(url, {
+      const res = await nativeRequest(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
@@ -103,7 +106,7 @@ function TrainingRecords({ token }) {
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this training record?')) return;
     try {
-      const res = await fetch(`${API}/training-records/${id}`, { method: 'DELETE' });
+      const res = await nativeRequest(`${API}/training-records/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
       showToast('Training record deleted');
       setShowDetail(false);
@@ -148,8 +151,11 @@ function TrainingRecords({ token }) {
     setShowDetail(true);
   };
 
+  if (error && !loading) return <section className="native-load-error" role="alert"><h1>Records could not be loaded</h1><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></section>;
+
   return (
     <div className="fade-in">
+      {error && <div role="alert" className="native-load-error"><strong>Records could not be loaded.</strong><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></div>}
       {toast && (
         <div className={`toast toast-${toast.type}`}>{toast.message}</div>
       )}
@@ -210,7 +216,7 @@ function TrainingRecords({ token }) {
           <div className="modal" style={{ maxWidth: '750px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{selectedItem.course_name}</h2>
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowDetail(false)}>Close</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowDetail(false)}>Cancel</button>
             </div>
             <div className="modal-body">
               {/* Record Number & Status Header */}

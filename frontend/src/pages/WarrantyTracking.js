@@ -1,9 +1,11 @@
+import { readRecordList } from '../services/nativeRecords';
+import { nativeRequest } from '../services/nativeRequest';
 import React, { useState, useEffect, useCallback } from 'react';
 import { API } from '../App';
 
 const WARRANTY_TYPES = ['Full', 'Limited', 'Extended', 'Prorated'];
 const CLAIM_STATUS_OPTIONS = ['No Claim', 'Pending', 'Approved', 'Denied', 'In Review'];
-const STATUS_OPTIONS = ['Active', 'Expired', 'Voided', 'Claimed'];
+const STATUS_OPTIONS = ['Draft', 'Active', 'Expired', 'Voided', 'Claimed'];
 
 const emptyForm = {
   warranty_number: '', part_number: '', part_name: '', serial_number: '',
@@ -53,6 +55,7 @@ const getRowStyle = (expiry_date) => {
 
 function WarrantyTracking({ token }) {
   const [items, setItems] = useState([]);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -67,14 +70,14 @@ function WarrantyTracking({ token }) {
   }, []);
 
   const fetchItems = useCallback(async () => {
-    setLoading(true);
+    setLoading(true); setError('');
     try {
-      const res = await fetch(`${API}/warranty-tracking`);
+      const res = await nativeRequest(`${API}/warranty-tracking`);
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
-      setItems(Array.isArray(data) ? data : []);
-    } catch {
-      showToast('Failed to load warranties', 'error');
+      setItems(readRecordList(data));
+    } catch (err) {
+      setError(err.message || 'Records could not be loaded.');
       setItems([]);
     } finally {
       setLoading(false);
@@ -93,7 +96,7 @@ function WarrantyTracking({ token }) {
     const method = editMode ? 'PUT' : 'POST';
     const url = editMode ? `${API}/warranty-tracking/${selectedItem.id}` : `${API}/warranty-tracking`;
     try {
-      const res = await fetch(url, {
+      const res = await nativeRequest(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
@@ -112,7 +115,7 @@ function WarrantyTracking({ token }) {
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this warranty?')) return;
     try {
-      const res = await fetch(`${API}/warranty-tracking/${id}`, { method: 'DELETE' });
+      const res = await nativeRequest(`${API}/warranty-tracking/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
       showToast('Warranty deleted');
       setShowDetail(false);
@@ -160,8 +163,11 @@ function WarrantyTracking({ token }) {
     setShowDetail(true);
   };
 
+  if (error && !loading) return <section className="native-load-error" role="alert"><h1>Records could not be loaded</h1><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></section>;
+
   return (
     <div className="fade-in">
+      {error && <div role="alert" className="native-load-error"><strong>Records could not be loaded.</strong><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></div>}
       {toast && (
         <div className={`toast toast-${toast.type}`}>{toast.message}</div>
       )}
@@ -222,7 +228,7 @@ function WarrantyTracking({ token }) {
           <div className="modal" style={{ maxWidth: '750px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Warranty {selectedItem.warranty_number}</h2>
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowDetail(false)}>Close</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowDetail(false)}>Cancel</button>
             </div>
             <div className="modal-body">
               {/* Warranty Number & Status Header */}

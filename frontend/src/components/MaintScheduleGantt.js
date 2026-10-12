@@ -1,10 +1,12 @@
+import useNativeCustomView from '../services/useNativeCustomView';
+import {nativeRequest} from '../services/nativeRequest';
 import React, { useEffect, useState } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
   CartesianGrid, Cell
 } from 'recharts';
 
-const API = (typeof window !== 'undefined' && window.__AERO_API__) || 'http://localhost:4047/api';
+const API = (typeof window !== 'undefined' && window.__AERO_API__) || '/api';
 
 const PRIORITY_COLOR = {
   Critical: '#ef4444',
@@ -14,31 +16,10 @@ const PRIORITY_COLOR = {
 };
 
 function MaintScheduleGantt({ token }) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        setLoading(true);
-        const r = await fetch(`${API}/custom-views/maint-schedule-gantt`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const j = await r.json();
-        if (!cancelled) setData(j);
-      } catch (e) {
-        if (!cancelled) setErr(e.message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [token]);
+  const {data,loading,error:err,reload}=useNativeCustomView('maint-schedule-gantt',token,value=>Array.isArray(value?.aircraft)&&value.aircraft.every(row=>Array.isArray(row.windows)));
 
   if (loading) return <div style={{ color: '#94a3b8' }}>Loading maintenance schedule...</div>;
-  if (err) return <div style={{ color: '#f87171' }}>Error: {err}</div>;
+  if (err) return <div role="alert"><strong>Native saved sources could not be loaded.</strong><p>{err}</p><button type="button" className="btn btn-secondary" onClick={reload}>Retry</button></div>;
   if (!data || !data.aircraft) return null;
 
   // Build chart rows: one row per aircraft, with offset_days then total_duration_days

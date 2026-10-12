@@ -1,3 +1,5 @@
+import { readRecordList } from '../services/nativeRecords';
+import { nativeRequest } from '../services/nativeRequest';
 import React, { useState, useEffect, useCallback } from 'react';
 import { API } from '../App';
 
@@ -42,6 +44,7 @@ const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { year: 'n
 
 function Customers({ token }) {
   const [items, setItems] = useState([]);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -56,14 +59,14 @@ function Customers({ token }) {
   }, []);
 
   const fetchItems = useCallback(async () => {
-    setLoading(true);
+    setLoading(true); setError('');
     try {
-      const res = await fetch(`${API}/customers`);
+      const res = await nativeRequest(`${API}/customers`);
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
-      setItems(Array.isArray(data) ? data : []);
-    } catch {
-      showToast('Failed to load customers', 'error');
+      setItems(readRecordList(data));
+    } catch (err) {
+      setError(err.message || 'Records could not be loaded.');
       setItems([]);
     } finally {
       setLoading(false);
@@ -82,7 +85,7 @@ function Customers({ token }) {
     const method = editMode ? 'PUT' : 'POST';
     const url = editMode ? `${API}/customers/${selectedItem.id}` : `${API}/customers`;
     try {
-      const res = await fetch(url, {
+      const res = await nativeRequest(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
@@ -101,7 +104,7 @@ function Customers({ token }) {
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this customer?')) return;
     try {
-      const res = await fetch(`${API}/customers/${id}`, { method: 'DELETE' });
+      const res = await nativeRequest(`${API}/customers/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
       showToast('Customer deleted');
       setShowDetail(false);
@@ -150,8 +153,11 @@ function Customers({ token }) {
     setShowDetail(true);
   };
 
+  if (error && !loading) return <section className="native-load-error" role="alert"><h1>Records could not be loaded</h1><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></section>;
+
   return (
     <div className="fade-in">
+      {error && <div role="alert" className="native-load-error"><strong>Records could not be loaded.</strong><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></div>}
       {toast && (
         <div className={`toast toast-${toast.type}`}>{toast.message}</div>
       )}
@@ -210,7 +216,7 @@ function Customers({ token }) {
           <div className="modal" style={{ maxWidth: '750px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{selectedItem.company_name}</h2>
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowDetail(false)}>Close</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowDetail(false)}>Cancel</button>
             </div>
             <div className="modal-body">
               {/* Customer Code & Status Header */}

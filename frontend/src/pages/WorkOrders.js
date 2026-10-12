@@ -1,3 +1,6 @@
+import AIReport from '../components/AIReport';
+import { readRecordList } from '../services/nativeRecords';
+import useCancellableAIRequest from '../services/useCancellableAIRequest';
 import React, { useState, useEffect } from 'react';
 import { API } from '../App';
 
@@ -12,6 +15,7 @@ const emptyForm = {
 };
 
 function WorkOrders({ token }) {
+  const { request: nativeRequest, cancel: cancelAI, busy: aiRequestBusy } = useCancellableAIRequest();
   const [items, setItems] = useState([]);
   const [pagination, setPagination] = useState(null);
   const [page, setPage] = useState(1);
@@ -45,12 +49,13 @@ function WorkOrders({ token }) {
     setError(null);
     try {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const res = await fetch(`${API}/work-orders?page=${pg}&limit=20`, { headers });
+      const res = await nativeRequest(`${API}/work-orders?page=${pg}&limit=20`, { headers });
       if (!res.ok) throw new Error('Failed to fetch work orders');
       const data = await res.json();
-      setItems(data.records || (Array.isArray(data) ? data : []));
+      setItems(readRecordList(data));
       if (data.pagination) setPagination(data.pagination);
     } catch (err) {
+      if (err.name === 'AbortError') return;
       setError(err.message);
     } finally {
       setLoading(false);
@@ -69,7 +74,7 @@ function WorkOrders({ token }) {
     const method = editing ? 'PUT' : 'POST';
     const url = editing ? `${API}/work-orders/${selected.id}` : `${API}/work-orders`;
     try {
-      const res = await fetch(url, {
+      const res = await nativeRequest(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form)
@@ -82,6 +87,7 @@ function WorkOrders({ token }) {
       setForm(emptyForm);
       fetchItems();
     } catch (err) {
+      if (err.name === 'AbortError') return;
       showToast(err.message, 'error');
     }
   };
@@ -89,12 +95,13 @@ function WorkOrders({ token }) {
   const handleDelete = async () => {
     if (!window.confirm('Delete this work order?')) return;
     try {
-      const res = await fetch(`${API}/work-orders/${selected.id}`, { method: 'DELETE' });
+      const res = await nativeRequest(`${API}/work-orders/${selected.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
       showToast('Work order deleted successfully');
       setSelected(null);
       fetchItems();
     } catch (err) {
+      if (err.name === 'AbortError') return;
       showToast(err.message, 'error');
     }
   };
@@ -127,7 +134,7 @@ function WorkOrders({ token }) {
     setAiLoading(true);
     setAiResult(null);
     try {
-      const res = await fetch(`${API}/ai/repair-cost-estimate`, {
+      const res = await nativeRequest(`${API}/ai/repair-cost-estimate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -142,6 +149,7 @@ function WorkOrders({ token }) {
       const data = await res.json();
       setAiResult(data);
     } catch (err) {
+      if (err.name === 'AbortError') return;
       showToast('AI analysis failed: ' + err.message, 'error');
     } finally {
       setAiLoading(false);
@@ -169,8 +177,12 @@ function WorkOrders({ token }) {
 
   const totalCost = (item) => (parseFloat(item.labor_cost) || 0) + (parseFloat(item.parts_cost) || 0);
 
+  if (error && !loading) return <section className="native-load-error" role="alert"><h1>Records could not be loaded</h1><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></section>;
+
   return (
     <div className="fade-in">
+      {aiRequestBusy && <div role="status" className="ai-loading">Generating with OpenRouter… <button type="button" className="btn btn-secondary" onClick={cancelAI}>Cancel AI request</button></div>}
+      {error && <div role="alert" className="native-load-error"><strong>Records could not be loaded.</strong><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></div>}
       {toast && (
         <div className={`toast toast-${toast.type}`}>{toast.message}</div>
       )}
@@ -241,7 +253,7 @@ function WorkOrders({ token }) {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Work Order: {selected.wo_number || 'N/A'}</h2>
-              <button className="btn btn-secondary btn-sm" onClick={() => setSelected(null)}>Close</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setSelected(null)}>Cancel</button>
             </div>
             <div className="modal-body">
               <div className="detail-grid">
@@ -341,18 +353,7 @@ function WorkOrders({ token }) {
                 </button>
               </div>
               {aiLoading && <div className="ai-loading">AI is analyzing repair costs...</div>}
-              {aiResult && (
-                <div className="ai-result">
-                  <h3>AI Repair Cost Estimate</h3>
-                  <div className="ai-result-content">
-                    {typeof aiResult === 'object' && aiResult.analysis
-                      ? aiResult.analysis
-                      : typeof aiResult === 'object'
-                        ? JSON.stringify(aiResult, null, 2)
-                        : String(aiResult)}
-                  </div>
-                </div>
-              )}
+              {aiResult && <AIReport response={aiResult} title="Repair cost estimate" />}
             </div>
             <div className="modal-footer">
               <button className="btn btn-danger btn-sm" onClick={handleDelete}>Delete</button>
@@ -368,7 +369,7 @@ function WorkOrders({ token }) {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{editing ? 'Edit Work Order' : 'New Work Order'}</h2>
-              <button className="btn btn-secondary btn-sm" onClick={() => { setShowForm(false); setEditing(false); }}>Close</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => { setShowForm(false); setEditing(false); }}>Cancel</button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">

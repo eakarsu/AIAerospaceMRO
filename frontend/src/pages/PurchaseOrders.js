@@ -1,3 +1,6 @@
+import AIReport from '../components/AIReport';
+import { readRecordList } from '../services/nativeRecords';
+import useCancellableAIRequest from '../services/useCancellableAIRequest';
 import React, { useState, useEffect } from 'react';
 import { API } from '../App';
 
@@ -9,7 +12,9 @@ const emptyForm = {
 };
 
 function PurchaseOrders({ token }) {
+  const { request: nativeRequest, cancel: cancelAI, busy: aiRequestBusy } = useCancellableAIRequest();
   const [items, setItems] = useState([]);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -21,7 +26,9 @@ function PurchaseOrders({ token }) {
   const [formData, setFormData] = useState({ ...emptyForm });
 
   const fetchItems = async () => {
-    try { const res = await fetch(`${API}/purchase-orders`); const data = await res.json(); setItems(Array.isArray(data) ? data : []); } catch (e) { console.error(e); }
+    setLoading(true); setError('');
+    try { const res = await nativeRequest(`${API}/purchase-orders`); const data = await res.json(); setItems(readRecordList(data)); } catch (e) {
+      if (e.name === 'AbortError') return; setError(e.message); }
     setLoading(false);
   };
 
@@ -33,27 +40,30 @@ function PurchaseOrders({ token }) {
     e.preventDefault();
     try {
       const url = editMode ? `${API}/purchase-orders/${selectedItem.id}` : `${API}/purchase-orders`;
-      const res = await fetch(url, { method: editMode ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) });
+      const res = await nativeRequest(url, { method: editMode ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) });
       if (!res.ok) throw new Error('Failed');
       showToast(editMode ? 'PO updated' : 'PO created');
       setShowForm(false); setShowDetail(false); setEditMode(false);
       fetchItems();
-    } catch (e) { showToast(e.message, 'error'); }
+    } catch (e) {
+      if (e.name === 'AbortError') return; showToast(e.message, 'error'); }
   };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this purchase order?')) return;
-    try { await fetch(`${API}/purchase-orders/${id}`, { method: 'DELETE' }); showToast('PO deleted'); setShowDetail(false); fetchItems(); } catch (e) { showToast(e.message, 'error'); }
+    try { await nativeRequest(`${API}/purchase-orders/${id}`, { method: 'DELETE' }); showToast('PO deleted'); setShowDetail(false); fetchItems(); } catch (e) {
+      if (e.name === 'AbortError') return; showToast(e.message, 'error'); }
   };
 
   const handleAI = async () => {
     setAiLoading(true); setAiResult(null);
     try {
-      const res = await fetch(`${API}/ai/purchase-analysis`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      const res = await nativeRequest(`${API}/ai/purchase-analysis`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ po_number: selectedItem.po_number, vendor_name: selectedItem.vendor_name, total_amount: selectedItem.total_amount, items_description: selectedItem.items_description, priority: selectedItem.priority, aircraft_reg: selectedItem.aircraft_reg })
       });
-      const data = await res.json(); setAiResult(data.analysis || data.error);
-    } catch (e) { setAiResult('Error: ' + e.message); }
+      const data = await res.json(); setAiResult(data);
+    } catch (e) {
+      if (e.name === 'AbortError') return; setAiResult('Error: ' + e.message); }
     setAiLoading(false);
   };
 
@@ -159,17 +169,7 @@ function PurchaseOrders({ token }) {
             <button className="btn btn-primary btn-sm" onClick={handleAI} disabled={aiLoading}>{aiLoading ? 'Analyzing...' : '🤖 AI Purchase Analysis'}</button>
           </div>
           {aiLoading && <div className="ai-loading" style={{ marginTop: '16px' }}>AI is analyzing this purchase order...</div>}
-          {aiResult && (
-            <div className="ai-result">
-              <h3>🤖 AI Purchase Analysis</h3>
-              {parseAI(aiResult).map((section, i) => (
-                <div key={i} className="ai-section">
-                  {section.title && <div className="ai-section-title">{section.title}</div>}
-                  <div className="ai-result-content">{section.content}</div>
-                </div>
-              ))}
-            </div>
-          )}
+          {aiResult && <AIReport response={aiResult} title="Procurement analysis" />}
         </div>
         <div className="modal-footer">
           <button className="btn btn-danger btn-sm" onClick={() => handleDelete(selectedItem.id)}>Delete</button>
@@ -179,8 +179,12 @@ function PurchaseOrders({ token }) {
     </div>
   );
 
+  if (error && !loading) return <section className="native-load-error" role="alert"><h1>Records could not be loaded</h1><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></section>;
+
   return (
     <div className="fade-in">
+      {aiRequestBusy && <div role="status" className="ai-loading">Generating with OpenRouter… <button type="button" className="btn btn-secondary" onClick={cancelAI}>Cancel AI request</button></div>}
+      {error && <div role="alert" className="native-load-error"><strong>Records could not be loaded.</strong><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></div>}
       <div className="page-header"><div><h1>Purchase Order Management</h1><p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>Procurement and supply chain tracking</p></div><button className="btn btn-primary" onClick={openCreate}>+ New Purchase Order</button></div>
       {loading ? <div className="ai-loading">Loading...</div> : items.length === 0 ? <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>No purchase orders found.</p> : (
         <div className="table-container"><table>

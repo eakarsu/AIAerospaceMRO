@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
+router.use(require('../middleware/nativeAICancellation'));
 const fetch = require('node-fetch');
 const pool = require('../db');
+const persistNativeAI = require('../services/persistNativeAI');
 const auth = require('../middleware/auth');
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const { body, validationResult } = require('express-validator');
@@ -65,7 +67,8 @@ function hasValidApiKey() {
 }
 
 // Helper: call OpenRouter AI with upgraded model
-async function callAI(systemPrompt, userPrompt) {
+async function callAI(systemPrompt, userPrompt, signal) {
+  signal?.throwIfAborted();
   if (!hasValidApiKey()) {
     const err = new Error('AI service unavailable');
     err.code = 'AI_DISABLED';
@@ -74,6 +77,7 @@ async function callAI(systemPrompt, userPrompt) {
 
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
+    signal,
     headers: {
       'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
       'Content-Type': 'application/json',
@@ -91,6 +95,7 @@ async function callAI(systemPrompt, userPrompt) {
     })
   });
   const data = await response.json();
+  signal?.throwIfAborted();
   if (data.error) throw new Error(data.error.message || 'AI API error');
   return {
     content: data.choices[0].message.content,
@@ -99,24 +104,10 @@ async function callAI(systemPrompt, userPrompt) {
 }
 
 // Helper: persist AI result to database
-async function persistAIResult(endpoint, userId, requestPayload, rawResponse, parsedResult, model, tokens) {
-  try {
-    await pool.query(
-      `INSERT INTO ai_results (endpoint, user_id, request_payload, raw_response, parsed_result, model, tokens_used)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [
-        endpoint,
-        userId || null,
-        JSON.stringify(requestPayload),
-        rawResponse,
-        parsedResult ? JSON.stringify(parsedResult) : null,
-        model || process.env.OPENROUTER_MODEL || 'anthropic/claude-3-5-sonnet-20241022',
-        tokens || null
-      ]
-    );
-  } catch (e) {
-    console.error('Failed to persist AI result:', e.message);
-  }
+async function persistAIResult(endpoint, userId, requestPayload, rawResponse, parsedResult, model, tokens, signal, client) {
+  const write = database => database.query(`INSERT INTO ai_results (endpoint, user_id, request_payload, raw_response, parsed_result, model, tokens_used) VALUES ($1,$2,$3,$4,$5,$6,$7)`,[endpoint,userId,JSON.stringify(requestPayload),rawResponse,parsedResult?JSON.stringify(parsedResult):null,model||process.env.OPENROUTER_MODEL||'anthropic/claude-3-5-sonnet-20241022',tokens??null]);
+  if(client){signal?.throwIfAborted();return write(client);}
+  return persistNativeAI(pool,signal,write);
 }
 
 // Helper: handle validation errors
@@ -141,7 +132,7 @@ const descriptionValidator = body('description')
 const maintenanceTypeValidator = body('maintenance_type')
   .optional()
   .isIn(['inspection', 'repair', 'overhaul', 'modification', 'Inspection', 'Repair', 'Overhaul', 'Modification',
-         'Scheduled Maintenance', 'Unscheduled', 'Annual Inspection', 'Major Repair'])
+         'Scheduled Maintenance', 'Unscheduled', 'Annual Inspection', 'Major Repair', 'Unscheduled Repair', 'Component Replacement', 'A-Check', 'B-Check', 'C-Check', 'D-Check', 'Engine Overhaul', 'Landing Gear Inspection', 'Avionics Update', 'Corrosion Treatment'])
   .withMessage('maintenance_type must be a valid type');
 
 // POST /repair-cost-estimate
@@ -174,13 +165,14 @@ Parts Needed: ${parts_needed || 'Not specified'}
 Estimated Labor Hours: ${labor_hours || 'Not specified'}
 Description: ${description || 'Not specified'}`;
 
-      const aiResult = await callAI(systemPrompt, userPrompt);
+      const aiResult = await callAI(systemPrompt, userPrompt, req.aiSignal);
       const parsed = parseAIJson(aiResult.content) || { summary: aiResult.content };
 
-      await persistAIResult('/ai/repair-cost-estimate', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens);
+      await persistAIResult('/ai/repair-cost-estimate', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens, req.aiSignal);
 
       res.json({ analysis: parsed, raw: aiResult.content, request: req.body });
     } catch (error) {
+      if(req.aiSignal?.aborted)return;
       if (error.code === 'AI_DISABLED') {
         return res.status(503).json({ error: 'AI service unavailable', code: 'AI_DISABLED' });
       }
@@ -221,13 +213,14 @@ Current Condition: ${current_condition || 'Not specified'}
 Flight Hours: ${flight_hours || 'Not specified'}
 Last Maintenance Date: ${last_maintenance_date || 'Not specified'}`;
 
-      const aiResult = await callAI(systemPrompt, userPrompt);
+      const aiResult = await callAI(systemPrompt, userPrompt, req.aiSignal);
       const parsed = parseAIJson(aiResult.content) || { summary: aiResult.content };
 
-      await persistAIResult('/ai/downtime-prediction', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens);
+      await persistAIResult('/ai/downtime-prediction', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens, req.aiSignal);
 
       res.json({ analysis: parsed, raw: aiResult.content, request: req.body });
     } catch (error) {
+      if(req.aiSignal?.aborted)return;
       if (error.code === 'AI_DISABLED') {
         return res.status(503).json({ error: 'AI service unavailable', code: 'AI_DISABLED' });
       }
@@ -269,13 +262,14 @@ Aircraft Type: ${aircraft_type || 'Not specified'}
 Description: ${description || 'Not specified'}
 Current Status: ${current_status || 'Not specified'}`;
 
-      const aiResult = await callAI(systemPrompt, userPrompt);
+      const aiResult = await callAI(systemPrompt, userPrompt, req.aiSignal);
       const parsed = parseAIJson(aiResult.content) || { directive_analysis: aiResult.content };
 
-      await persistAIResult('/ai/compliance-check', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens);
+      await persistAIResult('/ai/compliance-check', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens, req.aiSignal);
 
       res.json({ analysis: parsed, raw: aiResult.content, request: req.body });
     } catch (error) {
+      if(req.aiSignal?.aborted)return;
       if (error.code === 'AI_DISABLED') {
         return res.status(503).json({ error: 'AI service unavailable', code: 'AI_DISABLED' });
       }
@@ -323,13 +317,14 @@ Flight Hours: ${flight_hours || 'Not specified'}
 Condition Status: ${condition_status || 'Not specified'}
 Installed Date: ${installed_date || 'Not specified'}`;
 
-      const aiResult = await callAI(systemPrompt, userPrompt);
+      const aiResult = await callAI(systemPrompt, userPrompt, req.aiSignal);
       const parsed = parseAIJson(aiResult.content) || { current_status: aiResult.content };
 
-      await persistAIResult('/ai/parts-analysis', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens);
+      await persistAIResult('/ai/parts-analysis', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens, req.aiSignal);
 
       res.json({ analysis: parsed, raw: aiResult.content, request: req.body });
     } catch (error) {
+      if(req.aiSignal?.aborted)return;
       if (error.code === 'AI_DISABLED') {
         return res.status(503).json({ error: 'AI service unavailable', code: 'AI_DISABLED' });
       }
@@ -373,13 +368,14 @@ Severity: ${severity || 'Not specified'}
 Aircraft Type: ${aircraft_type || 'Not specified'}
 Location: ${location || 'Not specified'}`;
 
-      const aiResult = await callAI(systemPrompt, userPrompt);
+      const aiResult = await callAI(systemPrompt, userPrompt, req.aiSignal);
       const parsed = parseAIJson(aiResult.content) || { incident_classification: aiResult.content };
 
-      await persistAIResult('/ai/safety-analysis', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens);
+      await persistAIResult('/ai/safety-analysis', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens, req.aiSignal);
 
       res.json({ analysis: parsed, raw: aiResult.content, request: req.body });
     } catch (error) {
+      if(req.aiSignal?.aborted)return;
       if (error.code === 'AI_DISABLED') {
         return res.status(503).json({ error: 'AI service unavailable', code: 'AI_DISABLED' });
       }
@@ -413,13 +409,14 @@ Return ONLY valid JSON, no markdown fences.`;
 
       const userPrompt = `Analyze fleet data and provide optimization:\n\n${fleet_data}`;
 
-      const aiResult = await callAI(systemPrompt, userPrompt);
+      const aiResult = await callAI(systemPrompt, userPrompt, req.aiSignal);
       const parsed = parseAIJson(aiResult.content) || { fleet_health_overview: aiResult.content };
 
-      await persistAIResult('/ai/fleet-optimization', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens);
+      await persistAIResult('/ai/fleet-optimization', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens, req.aiSignal);
 
       res.json({ analysis: parsed, raw: aiResult.content, request: req.body });
     } catch (error) {
+      if(req.aiSignal?.aborted)return;
       if (error.code === 'AI_DISABLED') {
         return res.status(503).json({ error: 'AI service unavailable', code: 'AI_DISABLED' });
       }
@@ -467,13 +464,14 @@ Operational Restriction: ${operational_restriction || 'None'}
 Deferral Date: ${deferral_date || 'N/A'}
 Expiry Date: ${expiry_date || 'N/A'}`;
 
-      const aiResult = await callAI(systemPrompt, userPrompt);
+      const aiResult = await callAI(systemPrompt, userPrompt, req.aiSignal);
       const parsed = parseAIJson(aiResult.content) || { mel_category_assessment: aiResult.content };
 
-      await persistAIResult('/ai/mel-analysis', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens);
+      await persistAIResult('/ai/mel-analysis', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens, req.aiSignal);
 
       res.json({ analysis: parsed, raw: aiResult.content, request: req.body });
     } catch (error) {
+      if(req.aiSignal?.aborted)return;
       if (error.code === 'AI_DISABLED') {
         return res.status(503).json({ error: 'AI service unavailable', code: 'AI_DISABLED' });
       }
@@ -517,13 +515,14 @@ Revision: ${revision || 'N/A'}
 Aircraft Type: ${aircraft_type || 'N/A'}
 Description: ${description || 'N/A'}`;
 
-      const aiResult = await callAI(systemPrompt, userPrompt);
+      const aiResult = await callAI(systemPrompt, userPrompt, req.aiSignal);
       const parsed = parseAIJson(aiResult.content) || { document_assessment: aiResult.content };
 
-      await persistAIResult('/ai/document-review', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens);
+      await persistAIResult('/ai/document-review', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens, req.aiSignal);
 
       res.json({ analysis: parsed, raw: aiResult.content, request: req.body });
     } catch (error) {
+      if(req.aiSignal?.aborted)return;
       if (error.code === 'AI_DISABLED') {
         return res.status(503).json({ error: 'AI service unavailable', code: 'AI_DISABLED' });
       }
@@ -569,13 +568,14 @@ Items: ${items_description || 'N/A'}
 Priority: ${priority || 'N/A'}
 Aircraft: ${aircraft_reg || 'N/A'}`;
 
-      const aiResult = await callAI(systemPrompt, userPrompt);
+      const aiResult = await callAI(systemPrompt, userPrompt, req.aiSignal);
       const parsed = parseAIJson(aiResult.content) || { order_assessment: aiResult.content };
 
-      await persistAIResult('/ai/purchase-analysis', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens);
+      await persistAIResult('/ai/purchase-analysis', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens, req.aiSignal);
 
       res.json({ analysis: parsed, raw: aiResult.content, request: req.body });
     } catch (error) {
+      if(req.aiSignal?.aborted)return;
       if (error.code === 'AI_DISABLED') {
         return res.status(503).json({ error: 'AI service unavailable', code: 'AI_DISABLED' });
       }
@@ -655,10 +655,11 @@ Fleet Health Data: ${flightHoursInfo}
 Maintenance History (last 20 records):
 ${historyText}`;
 
-      const aiResult = await callAI(systemPrompt, userPrompt);
+      const aiResult = await callAI(systemPrompt, userPrompt, req.aiSignal);
       const parsedPrediction = parseAIJson(aiResult.content) || { summary: aiResult.content };
 
-      const saveResult = await pool.query(
+      const saveResult = await persistNativeAI(pool,req.aiSignal,async(client)=>{
+        const saveResult = await client.query(
         `INSERT INTO maintenance_predictions
          (aircraft_id, lookahead_days, predicted_maintenance_windows, parts_likely_to_fail,
           estimated_labor_cost, estimated_parts_cost, ai_analysis)
@@ -675,7 +676,10 @@ ${historyText}`;
         ]
       );
 
-      await persistAIResult('/ai/predict-maintenance', req.user?.id, req.body, aiResult.content, parsedPrediction, null, aiResult.tokens);
+      await persistAIResult('/ai/predict-maintenance', req.user?.id, req.body, aiResult.content, parsedPrediction, null, aiResult.tokens, req.aiSignal, client);
+
+        return saveResult;
+      });
 
       res.json({
         prediction: saveResult.rows[0],
@@ -684,6 +688,7 @@ ${historyText}`;
         maintenance_records_analyzed: history.length
       });
     } catch (error) {
+      if(req.aiSignal?.aborted)return;
       if (error.code === 'AI_DISABLED') {
         return res.status(503).json({ error: 'AI service unavailable', code: 'AI_DISABLED' });
       }
@@ -739,10 +744,10 @@ Description: ${workOrder.description || 'N/A'}, Est. Hours: ${workOrder.estimate
 Available Active Technicians:
 ${techList || 'No active technicians found'}`;
 
-      const aiResult = await callAI(systemPrompt, userPrompt);
+      const aiResult = await callAI(systemPrompt, userPrompt, req.aiSignal);
       const parsedMatch = parseAIJson(aiResult.content) || { reasoning: aiResult.content };
 
-      await persistAIResult('/ai/match-technician', req.user?.id, req.body, aiResult.content, parsedMatch, null, aiResult.tokens);
+      await persistAIResult('/ai/match-technician', req.user?.id, req.body, aiResult.content, parsedMatch, null, aiResult.tokens, req.aiSignal);
 
       res.json({
         work_order: workOrder,
@@ -750,6 +755,7 @@ ${techList || 'No active technicians found'}`;
         technicians_evaluated: technicians.length
       });
     } catch (error) {
+      if(req.aiSignal?.aborted)return;
       if (error.code === 'AI_DISABLED') {
         return res.status(503).json({ error: 'AI service unavailable', code: 'AI_DISABLED' });
       }
@@ -790,13 +796,14 @@ System Type: ${system_type || 'General'}
 Sensor Readings:
 ${typeof sensor_readings === 'string' ? sensor_readings : JSON.stringify(sensor_readings, null, 2)}`;
 
-      const aiResult = await callAI(systemPrompt, userPrompt);
+      const aiResult = await callAI(systemPrompt, userPrompt, req.aiSignal);
       const parsed = parseAIJson(aiResult.content) || { anomaly_detected: false, notes: aiResult.content };
 
-      await persistAIResult('/ai/anomaly-detect', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens);
+      await persistAIResult('/ai/anomaly-detect', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens, req.aiSignal);
 
       res.json({ analysis: parsed, raw: aiResult.content, aircraft_reg });
     } catch (error) {
+      if(req.aiSignal?.aborted)return;
       if (error.code === 'AI_DISABLED') {
         return res.status(503).json({ error: 'AI service unavailable', code: 'AI_DISABLED' });
       }
@@ -865,13 +872,14 @@ ${workOrdersText}
 Current Shift Schedule:
 ${shiftsText}`;
 
-      const aiResult = await callAI(systemPrompt, userPrompt);
+      const aiResult = await callAI(systemPrompt, userPrompt, req.aiSignal);
       const parsed = parseAIJson(aiResult.content) || { optimization_summary: aiResult.content };
 
-      await persistAIResult('/ai/optimize-shifts', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens);
+      await persistAIResult('/ai/optimize-shifts', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens, req.aiSignal);
 
       res.json({ analysis: parsed, raw: aiResult.content, period: { start_date, end_date } });
     } catch (error) {
+      if(req.aiSignal?.aborted)return;
       if (error.code === 'AI_DISABLED') {
         return res.status(503).json({ error: 'AI service unavailable', code: 'AI_DISABLED' });
       }
@@ -933,11 +941,12 @@ Self-reported Current Skills: ${current_skills || 'Not specified'}
 Recent Work Orders Assigned:
 ${recentWorkText}`;
 
-      const aiResult = await callAI(systemPrompt, userPrompt);
+      const aiResult = await callAI(systemPrompt, userPrompt, req.aiSignal);
       const parsed = parseAIJson(aiResult.content) || { summary: aiResult.content };
-      await persistAIResult('/ai/training-path', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens);
+      await persistAIResult('/ai/training-path', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens, req.aiSignal);
       res.json({ analysis: parsed, raw: aiResult.content, request: req.body });
     } catch (error) {
+      if(req.aiSignal?.aborted)return;
       if (error.code === 'AI_DISABLED') {
         return res.status(503).json({ error: 'AI service unavailable', code: 'AI_DISABLED', missing: 'OPENROUTER_API_KEY' });
       }
@@ -1005,11 +1014,12 @@ ${techText}
 Inventory Snapshot:
 ${invText}`;
 
-      const aiResult = await callAI(systemPrompt, userPrompt);
+      const aiResult = await callAI(systemPrompt, userPrompt, req.aiSignal);
       const parsed = parseAIJson(aiResult.content) || { summary: aiResult.content };
-      await persistAIResult('/ai/fleet-reallocation', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens);
+      await persistAIResult('/ai/fleet-reallocation', req.user?.id, req.body, aiResult.content, parsed, null, aiResult.tokens, req.aiSignal);
       res.json({ analysis: parsed, raw: aiResult.content, request: req.body });
     } catch (error) {
+      if(req.aiSignal?.aborted)return;
       if (error.code === 'AI_DISABLED') {
         return res.status(503).json({ error: 'AI service unavailable', code: 'AI_DISABLED', missing: 'OPENROUTER_API_KEY' });
       }
@@ -1020,7 +1030,7 @@ ${invText}`;
 );
 
 // GET /history – retrieve past AI results for current user
-router.get('/history', async (req, res) => {
+router.get(['/history', '/native-history'], async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
@@ -1051,6 +1061,7 @@ router.get('/history', async (req, res) => {
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
     });
   } catch (error) {
+      if(req.aiSignal?.aborted)return;
     console.error('AI history error:', error);
     res.status(500).json({ error: 'Failed to fetch AI history', details: error.message });
   }

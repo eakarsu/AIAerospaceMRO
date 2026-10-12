@@ -1,8 +1,10 @@
+import { readRecordList } from '../services/nativeRecords';
+import { nativeRequest } from '../services/nativeRequest';
 import React, { useState, useEffect, useCallback } from 'react';
 import { API } from '../App';
 
 const SHIFT_TYPES = ['Day', 'Night', 'Swing'];
-const STATUS_OPTIONS = ['Scheduled', 'In Progress', 'Completed', 'Cancelled'];
+const STATUS_OPTIONS = ['Draft', 'Scheduled', 'In Progress', 'Completed', 'Cancelled'];
 
 const emptyForm = {
   shift_code: '', technician_name: '', employee_id: '', shift_type: '',
@@ -33,6 +35,7 @@ const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { year: 'n
 
 function ShiftScheduling({ token }) {
   const [items, setItems] = useState([]);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -47,14 +50,14 @@ function ShiftScheduling({ token }) {
   }, []);
 
   const fetchItems = useCallback(async () => {
-    setLoading(true);
+    setLoading(true); setError('');
     try {
-      const res = await fetch(`${API}/shift-scheduling`);
+      const res = await nativeRequest(`${API}/shift-scheduling`);
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
-      setItems(Array.isArray(data) ? data : []);
-    } catch {
-      showToast('Failed to load shifts', 'error');
+      setItems(readRecordList(data));
+    } catch (err) {
+      setError(err.message || 'Records could not be loaded.');
       setItems([]);
     } finally {
       setLoading(false);
@@ -73,7 +76,7 @@ function ShiftScheduling({ token }) {
     const method = editMode ? 'PUT' : 'POST';
     const url = editMode ? `${API}/shift-scheduling/${selectedItem.id}` : `${API}/shift-scheduling`;
     try {
-      const res = await fetch(url, {
+      const res = await nativeRequest(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
@@ -92,7 +95,7 @@ function ShiftScheduling({ token }) {
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this shift?')) return;
     try {
-      const res = await fetch(`${API}/shift-scheduling/${id}`, { method: 'DELETE' });
+      const res = await nativeRequest(`${API}/shift-scheduling/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
       showToast('Shift deleted');
       setShowDetail(false);
@@ -135,8 +138,11 @@ function ShiftScheduling({ token }) {
     setShowDetail(true);
   };
 
+  if (error && !loading) return <section className="native-load-error" role="alert"><h1>Records could not be loaded</h1><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></section>;
+
   return (
     <div className="fade-in">
+      {error && <div role="alert" className="native-load-error"><strong>Records could not be loaded.</strong><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></div>}
       {toast && (
         <div className={`toast toast-${toast.type}`}>{toast.message}</div>
       )}
@@ -210,7 +216,7 @@ function ShiftScheduling({ token }) {
           <div className="modal" style={{ maxWidth: '750px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{selectedItem.technician_name}</h2>
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowDetail(false)}>Close</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowDetail(false)}>Cancel</button>
             </div>
             <div className="modal-body">
               {/* Shift Code & Status Header */}

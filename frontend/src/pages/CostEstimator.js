@@ -1,3 +1,6 @@
+import AIReport from '../components/AIReport';
+import useCancellableAIRequest from '../services/useCancellableAIRequest';
+import CompleteAIExamples, { AIRequiredButton } from "../components/CompleteAIExamples";
 import React, { useState } from 'react';
 import { API } from '../App';
 
@@ -30,6 +33,7 @@ function parseAI(text) {
 }
 
 function CostEstimator({ token }) {
+  const { request: nativeRequest, cancel: cancelAI, busy: aiRequestBusy } = useCancellableAIRequest();
   const [form, setForm] = useState({
     aircraft_type: AIRCRAFT_TYPES[0],
     maintenance_type: MAINTENANCE_TYPES[0],
@@ -48,7 +52,7 @@ function CostEstimator({ token }) {
     setLoading(true);
     setResult(null);
     try {
-      const res = await fetch(`${API}/ai/repair-cost-estimate`, {
+      const res = await nativeRequest(`${API}/ai/repair-cost-estimate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -61,6 +65,7 @@ function CostEstimator({ token }) {
       setResult(data.analysis || data.result || data);
       setToast({ type: 'success', message: 'Cost estimate generated' });
     } catch (err) {
+      if (err.name === 'AbortError') return;
       setToast({ type: 'error', message: err.message });
     } finally {
       setLoading(false);
@@ -73,6 +78,7 @@ function CostEstimator({ token }) {
 
   return (
     <div className="fade-in">
+      {aiRequestBusy && <div role="status" className="ai-loading">Generating with OpenRouter… <button type="button" className="btn btn-secondary" onClick={cancelAI}>Cancel AI request</button></div>}
       {toast && <div className={`toast toast-${toast.type}`}>{toast.message}</div>}
 
       <div className="page-header">
@@ -82,91 +88,44 @@ function CostEstimator({ token }) {
         </div>
       </div>
 
-      <form onSubmit={submit} style={{ background: 'var(--bg-card)', padding: 24, borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+      <CompleteAIExamples busy={loading} context="MRO cost planning"><form onSubmit={submit} style={{ background: 'var(--bg-card)', padding: 24, borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <div className="form-group">
             <label>Aircraft Type</label>
-            <select value={form.aircraft_type} onChange={e => update('aircraft_type', e.target.value)}>
+            <select data-ai-field="aircraft_type" value={form.aircraft_type} onChange={e => update('aircraft_type', e.target.value)}>
               {AIRCRAFT_TYPES.map(t => <option key={t}>{t}</option>)}
             </select>
           </div>
           <div className="form-group">
             <label>Maintenance Type</label>
-            <select value={form.maintenance_type} onChange={e => update('maintenance_type', e.target.value)}>
+            <select data-ai-field="maintenance_type" value={form.maintenance_type} onChange={e => update('maintenance_type', e.target.value)}>
               {MAINTENANCE_TYPES.map(t => <option key={t}>{t}</option>)}
             </select>
           </div>
           <div className="form-group">
             <label>Parts Needed</label>
-            <input type="text" value={form.parts_needed} onChange={e => update('parts_needed', e.target.value)}
+            <input data-ai-field="parts_needed" type="text" value={form.parts_needed} onChange={e => update('parts_needed', e.target.value)}
               placeholder="e.g. 2x landing gear bushings, hydraulic seals" />
           </div>
           <div className="form-group">
             <label>Labor Hours (estimated)</label>
-            <input type="number" value={form.labor_hours} onChange={e => update('labor_hours', e.target.value)}
+            <input data-ai-field="labor_hours" type="number" value={form.labor_hours} onChange={e => update('labor_hours', e.target.value)}
               placeholder="e.g. 48" min="0" />
           </div>
         </div>
         <div className="form-group">
           <label>Description</label>
-          <textarea value={form.description} onChange={e => update('description', e.target.value)} rows={4}
+          <textarea data-ai-field="description" value={form.description} onChange={e => update('description', e.target.value)} rows={4}
             placeholder="Describe the maintenance scope..." />
         </div>
-        <button type="submit" className="btn btn-primary" disabled={loading}>
+        <AIRequiredButton data-ai-generate type="submit" className="btn btn-primary" disabled={loading}>
           {loading ? 'Estimating...' : 'Generate Cost Estimate'}
-        </button>
-      </form>
+        </AIRequiredButton>
+      </form></CompleteAIExamples>
 
       {loading && <div className="ai-loading" style={{ marginTop: 24 }}>Analyzing maintenance scope with AI...</div>}
 
-      {result && (
-        <div className="ai-result" style={{ marginTop: 24 }}>
-          <h3>AI Cost Estimate</h3>
-          {isJsonResult ? (
-            <div>
-              {result.summary && <p style={{ marginBottom: 16 }}>{result.summary}</p>}
-              {result.total_estimate !== undefined && (
-                <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: 16, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <strong style={{ fontSize: '1.1rem' }}>Total Estimate</strong>
-                  <span style={{ fontSize: '1.5rem', fontWeight: 700, color: '#15803d' }}>${result.total_estimate?.toLocaleString()}</span>
-                </div>
-              )}
-              {result.labor_cost_breakdown && (
-                <div style={{ marginBottom: 12 }}>
-                  <strong>Labor Cost Breakdown</strong>
-                  <div style={{ fontSize: '0.9rem', marginTop: 4 }}>
-                    Rate: ${result.labor_cost_breakdown.rate_per_hour}/hr &times; {result.labor_cost_breakdown.estimated_hours} hrs = <strong>${result.labor_cost_breakdown.total_labor?.toLocaleString()}</strong>
-                  </div>
-                </div>
-              )}
-              {Array.isArray(result.parts_cost_breakdown) && result.parts_cost_breakdown.length > 0 && (
-                <div style={{ marginBottom: 12 }}>
-                  <strong>Parts Breakdown</strong>
-                  <ul style={{ marginTop: 4 }}>
-                    {result.parts_cost_breakdown.map((p, i) => (
-                      <li key={i} style={{ fontSize: '0.9rem' }}>{p.part} &times; {p.quantity} @ ${p.unit_cost} = ${p.total?.toLocaleString()}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {Array.isArray(result.cost_saving_recommendations) && result.cost_saving_recommendations.length > 0 && (
-                <div>
-                  <strong>Cost-Saving Recommendations</strong>
-                  <ul style={{ marginTop: 4 }}>
-                    {result.cost_saving_recommendations.map((r, i) => <li key={i} style={{ fontSize: '0.9rem' }}>{r}</li>)}
-                  </ul>
-                </div>
-              )}
-              {result.confidence_level && <div style={{ marginTop: 8, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Confidence: {result.confidence_level} | {result.notes}</div>}
-            </div>
-          ) : sections.length > 0 ? sections.map((s, i) => (
-            <div key={i} className="ai-section">
-              {s.title && <div className="ai-section-title">{s.title}</div>}
-              <div className="ai-result-content">{s.content.map((l, j) => <div key={j}>{l}</div>)}</div>
-            </div>
-          )) : <div className="ai-result-content">{typeof result === 'string' ? result : JSON.stringify(result, null, 2)}</div>}
-        </div>
-      )}
+      {result && <AIReport response={result} title="AI repair cost estimate" />}
     </div>
   );
 }

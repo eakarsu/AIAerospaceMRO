@@ -41,7 +41,7 @@ query([
   'CREATE TABLE IF NOT EXISTS runtime_ai_interactions(id BIGSERIAL PRIMARY KEY,user_id UUID NOT NULL REFERENCES runtime_app_users(id),feature TEXT NOT NULL,input JSONB NOT NULL,output JSONB NOT NULL,model TEXT NOT NULL,provider_receipt JSONB NOT NULL DEFAULT \'{}\'::jsonb,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());',
   'ALTER TABLE runtime_ai_interactions ADD COLUMN IF NOT EXISTS provider_receipt JSONB NOT NULL DEFAULT \'{}\'::jsonb;',
   'CREATE INDEX IF NOT EXISTS runtime_ai_interactions_user_idx ON runtime_ai_interactions(user_id,created_at DESC);',
-  'INSERT INTO runtime_app_users(email,password_hash,display_name,role,active) VALUES(' + literal(adminEmail) + ',' + literal(passwordHash) + ',\'Runtime Administrator\',\'admin\',TRUE) ON CONFLICT(email) DO UPDATE SET password_hash=EXCLUDED.password_hash,role=\'admin\',active=TRUE;',
+  'INSERT INTO runtime_app_users(email,password_hash,display_name,role,active) VALUES(' + literal(adminEmail) + ',' + literal(passwordHash) + ',\'Runtime Administrator\',\'admin\',TRUE) ON CONFLICT(email) DO NOTHING;',
   'COMMIT;'
 ].join('\n'));
 

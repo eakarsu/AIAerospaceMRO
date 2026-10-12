@@ -1,3 +1,6 @@
+import AIReport from '../components/AIReport';
+import useCancellableAIRequest from '../services/useCancellableAIRequest';
+import CompleteAIExamples, { AIRequiredButton } from "../components/CompleteAIExamples";
 import React, { useState } from 'react';
 import { API } from '../App';
 
@@ -151,6 +154,7 @@ function parseAI(text) {
 }
 
 function AITools({ token }) {
+  const { request: nativeRequest, cancel: cancelAI, busy: aiRequestBusy } = useCancellableAIRequest();
   const [active, setActive] = useState('compliance-check');
   const [form, setForm] = useState({});
   const [loading, setLoading] = useState(false);
@@ -170,7 +174,7 @@ function AITools({ token }) {
     setLoading(true);
     setResult(null);
     try {
-      const res = await fetch(`${API}${tool.endpoint}`, {
+      const res = await nativeRequest(`${API}${tool.endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -184,6 +188,7 @@ function AITools({ token }) {
       setResult(data.analysis || data.result || data);
       setToast({ type: 'success', message: 'Analysis complete' });
     } catch (err) {
+      if (err.name === 'AbortError') return;
       setToast({ type: 'error', message: err.message });
     } finally {
       setLoading(false);
@@ -230,6 +235,7 @@ function AITools({ token }) {
 
   return (
     <div className="fade-in">
+      {aiRequestBusy && <div role="status" className="ai-loading">Generating with OpenRouter… <button type="button" className="btn btn-secondary" onClick={cancelAI}>Cancel AI request</button></div>}
       {toast && <div className={`toast toast-${toast.type}`}>{toast.message}</div>}
 
       <div className="page-header">
@@ -251,43 +257,31 @@ function AITools({ token }) {
       <div style={{ background: 'var(--bg-card)', padding: 24, borderRadius: 'var(--radius)', border: '1px solid var(--border)', marginBottom: 16 }}>
         <h2>{tool.title}</h2>
         <p style={{ color: 'var(--text-muted)', marginBottom: 16 }}>{tool.description}</p>
-        <form onSubmit={submit}>
+        <CompleteAIExamples busy={loading} context="Aircraft MRO planning"><form onSubmit={submit}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
             {tool.fields.map(f => (
               <div key={f.name} className="form-group" style={f.textarea ? { gridColumn: '1 / -1' } : {}}>
                 <label>{f.label}</label>
                 {f.textarea ? (
-                  <textarea value={form[f.name] || ''} onChange={e => setForm({ ...form, [f.name]: e.target.value })}
+                  <textarea data-ai-field={f.name} value={form[f.name] || ''} onChange={e => setForm({ ...form, [f.name]: e.target.value })}
                     rows={4} placeholder={f.placeholder || ''} />
                 ) : (
-                  <input type={f.type || 'text'} value={form[f.name] || ''}
+                  <input data-ai-field={f.name} type={f.type || 'text'} value={form[f.name] || ''}
                     onChange={e => setForm({ ...form, [f.name]: e.target.value })}
                     placeholder={f.placeholder || ''} />
                 )}
               </div>
             ))}
           </div>
-          <button type="submit" className="btn btn-primary" disabled={loading} style={{ marginTop: 16 }}>
+          <AIRequiredButton data-ai-generate type="submit" className="btn btn-primary" disabled={loading} style={{ marginTop: 16 }}>
             {loading ? 'Analyzing...' : 'Run Analysis'}
-          </button>
-        </form>
+          </AIRequiredButton>
+        </form></CompleteAIExamples>
       </div>
 
       {loading && <div className="ai-loading">Running AI analysis...</div>}
 
-      {result && (
-        <div className="ai-result">
-          <h3>AI Analysis</h3>
-          {isJsonResult ? (
-            <div style={{ padding: '0 4px' }}>{renderValue(result)}</div>
-          ) : sections.length > 0 ? sections.map((s, i) => (
-            <div key={i} className="ai-section">
-              {s.title && <div className="ai-section-title">{s.title}</div>}
-              <div className="ai-result-content">{s.content.map((l, j) => <div key={j}>{l}</div>)}</div>
-            </div>
-          )) : <div className="ai-result-content">{typeof result === 'string' ? result : JSON.stringify(result, null, 2)}</div>}
-        </div>
-      )}
+      {result && <AIReport response={result} title="AI analysis" />}
     </div>
   );
 }

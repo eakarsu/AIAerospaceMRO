@@ -1,5 +1,15 @@
 const express = require('express');
 const router = express.Router();
+
+router.get('/demo-credentials', (req, res) => {
+  if (process.env.NODE_ENV === 'production' || process.env.ENABLE_DEMO_CREDENTIAL_AUTOFILL === 'false') return res.status(404).json({ error: 'Not found' });
+  const aliases = ['DEMO', 'PROVISION_ADMIN', 'BOOTSTRAP_ADMIN', 'SEED_ADMIN', 'ADMIN'];
+  const alias = aliases.find(key => process.env[`${key}_EMAIL`] && process.env[`${key}_PASSWORD`]);
+  if (!alias) return res.status(503).json({ error: 'Configure a native local Demo account in the project environment.' });
+  res.set('Cache-Control', 'no-store');
+  return res.json({ email: process.env[`${alias}_EMAIL`], password: process.env[`${alias}_PASSWORD`] });
+});
+
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const auth = require('../middleware/auth');
@@ -69,7 +79,7 @@ router.post('/register',
 // @route   POST /api/auth/login
 // @desc    Authenticate user and return token
 // @access  Public
-router.post('/login', async (req, res) => {
+router.post(['/login', '/native-login'], async (req, res) => {
   const { email, password } = req.body;
 
   try {

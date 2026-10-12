@@ -1,44 +1,24 @@
+import useNativeCustomView from '../services/useNativeCustomView';
+import {nativeRequest} from '../services/nativeRequest';
 import React, { useEffect, useState } from 'react';
 
-const API = (typeof window !== 'undefined' && window.__AERO_API__) || 'http://localhost:4047/api';
+const API = (typeof window !== 'undefined' && window.__AERO_API__) || '/api';
 
 function WorkOrderPDF({ token }) {
   const [list, setList] = useState([]);
   const [selected, setSelected] = useState('');
-  const [loading, setLoading] = useState(true);
+  const {data,loading,error:sourceError,reload}=useNativeCustomView('work-orders/list',token,value=>Array.isArray(value?.work_orders));
   const [downloading, setDownloading] = useState(false);
   const [msg, setMsg] = useState(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        setLoading(true);
-        const r = await fetch(`${API}/custom-views/work-orders/list`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const j = await r.json();
-        if (!cancelled) {
-          setList(j.work_orders || []);
-          if (j.work_orders && j.work_orders.length > 0) {
-            setSelected(String(j.work_orders[0].id));
-          }
-        }
-      } catch (e) {
-        if (!cancelled) setMsg(`Error: ${e.message}`);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [token]);
+  useEffect(()=>{if(data){setList(data.work_orders);setSelected(current=>data.work_orders.some(row=>String(row.id)===current)?current:String(data.work_orders[0]?.id||''));}},[data]);
 
   const downloadPDF = async () => {
     if (!selected) return;
     setDownloading(true);
     setMsg(null);
     try {
-      const r = await fetch(`${API}/custom-views/work-orders/${selected}/pdf`, {
+      const r = await nativeRequest(`${API}/custom-views/work-orders/${selected}/pdf`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -62,6 +42,7 @@ function WorkOrderPDF({ token }) {
 
   const selectedWO = list.find(w => String(w.id) === String(selected));
 
+  if(sourceError)return <div role="alert"><strong>Saved work orders could not be loaded.</strong><p>{sourceError}</p><button type="button" className="btn btn-secondary" onClick={reload}>Retry</button></div>;
   return (
     <div style={{ color: '#e5e7eb' }}>
       <div style={{

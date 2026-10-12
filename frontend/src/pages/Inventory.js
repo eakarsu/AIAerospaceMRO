@@ -1,3 +1,5 @@
+import { readRecordList } from '../services/nativeRecords';
+import { nativeRequest } from '../services/nativeRequest';
 import React, { useState, useEffect } from 'react';
 import { API } from '../App';
 
@@ -42,13 +44,13 @@ function Inventory({ token }) {
   };
 
   const fetchItems = async () => {
-    setLoading(true);
+    setLoading(true); setError('');
     setError(null);
     try {
-      const res = await fetch(`${API}/inventory`);
+      const res = await nativeRequest(`${API}/inventory`);
       if (!res.ok) throw new Error('Failed to fetch inventory');
       const data = await res.json();
-      setItems(data.records || (Array.isArray(data) ? data : []));
+      setItems(readRecordList(data));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -68,7 +70,7 @@ function Inventory({ token }) {
     const method = editing ? 'PUT' : 'POST';
     const url = editing ? `${API}/inventory/${selected.id}` : `${API}/inventory`;
     try {
-      const res = await fetch(url, {
+      const res = await nativeRequest(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form)
@@ -88,7 +90,7 @@ function Inventory({ token }) {
   const handleDelete = async () => {
     if (!window.confirm('Delete this inventory item?')) return;
     try {
-      const res = await fetch(`${API}/inventory/${selected.id}`, { method: 'DELETE' });
+      const res = await nativeRequest(`${API}/inventory/${selected.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
       showToast('Inventory item deleted successfully');
       setSelected(null);
@@ -133,8 +135,11 @@ function Inventory({ token }) {
 
   const totalValue = (item) => (parseFloat(item.quantity) || 0) * (parseFloat(item.unit_cost) || 0);
 
+  if (error && !loading) return <section className="native-load-error" role="alert"><h1>Records could not be loaded</h1><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></section>;
+
   return (
     <div className="fade-in">
+      {error && <div role="alert" className="native-load-error"><strong>Records could not be loaded.</strong><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></div>}
       {toast && (
         <div className={`toast toast-${toast.type}`}>{toast.message}</div>
       )}
@@ -198,7 +203,7 @@ function Inventory({ token }) {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Part: {selected.part_number || 'N/A'}</h2>
-              <button className="btn btn-secondary btn-sm" onClick={() => setSelected(null)}>Close</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setSelected(null)}>Cancel</button>
             </div>
             <div className="modal-body">
               <div style={{ marginBottom: '16px' }}>{getStockBadge(selected)}</div>
@@ -279,7 +284,7 @@ function Inventory({ token }) {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{editing ? 'Edit Inventory Item' : 'New Inventory Item'}</h2>
-              <button className="btn btn-secondary btn-sm" onClick={() => { setShowForm(false); setEditing(false); }}>Close</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => { setShowForm(false); setEditing(false); }}>Cancel</button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">

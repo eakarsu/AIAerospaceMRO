@@ -1,3 +1,5 @@
+import { readRecordList } from '../services/nativeRecords';
+import { nativeRequest } from '../services/nativeRequest';
 import React, { useState, useEffect } from 'react';
 import { API } from '../App';
 
@@ -37,6 +39,7 @@ function formatDateTime(d) {
 
 function AuditLog({ token }) {
   const [items, setItems] = useState([]);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -50,13 +53,13 @@ function AuditLog({ token }) {
   };
 
   const fetchItems = async () => {
-    setLoading(true);
+    setLoading(true); setError('');
     try {
-      const res = await fetch(`${API}/audit-log`);
+      const res = await nativeRequest(`${API}/audit-log`);
       const data = await res.json();
-      setItems(data.records || (Array.isArray(data) ? data : []));
-    } catch {
-      showToast('Failed to load audit log entries', 'error');
+      setItems(readRecordList(data));
+    } catch (err) {
+      setError(err.message || 'Records could not be loaded.');
     } finally {
       setLoading(false);
     }
@@ -72,7 +75,7 @@ function AuditLog({ token }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch(`${API}/audit-log`, {
+      const res = await nativeRequest(`${API}/audit-log`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -92,7 +95,7 @@ function AuditLog({ token }) {
   const handleDelete = async () => {
     if (!window.confirm('Are you sure you want to delete this audit log entry?')) return;
     try {
-      const res = await fetch(`${API}/audit-log/${selectedItem.id}`, { method: 'DELETE' });
+      const res = await nativeRequest(`${API}/audit-log/${selectedItem.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
       showToast('Audit log entry deleted');
       setShowDetail(false);
@@ -112,8 +115,11 @@ function AuditLog({ token }) {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  if (error && !loading) return <section className="native-load-error" role="alert"><h1>Records could not be loaded</h1><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></section>;
+
   return (
     <div className="fade-in">
+      {error && <div role="alert" className="native-load-error"><strong>Records could not be loaded.</strong><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => fetchItems()}>Retry</button></div>}
       {toast && (
         <div className={`toast toast-${toast.type}`}>{toast.message}</div>
       )}
@@ -175,7 +181,7 @@ function AuditLog({ token }) {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{selectedItem.log_number} - {selectedItem.action_type}</h2>
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowDetail(false)}>Close</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowDetail(false)}>Cancel</button>
             </div>
             <div className="modal-body">
               <div className="detail-grid">
@@ -305,7 +311,7 @@ function AuditLog({ token }) {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>New Log Entry</h2>
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowForm(false)}>Close</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowForm(false)}>Cancel</button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">

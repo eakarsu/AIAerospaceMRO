@@ -1,40 +1,22 @@
+import useNativeCustomView from '../services/useNativeCustomView';
+import {nativeRequest} from '../services/nativeRequest';
 import React, { useEffect, useState } from 'react';
 
-const API = (typeof window !== 'undefined' && window.__AERO_API__) || 'http://localhost:4047/api';
+const API = (typeof window !== 'undefined' && window.__AERO_API__) || '/api';
 
 const STATUS_STYLE = {
   IN_SERVICE: { bg: '#0f5132', border: '#198754', label: 'In Service', color: '#d1e7dd' },
   IN_MAINT:   { bg: '#664d03', border: '#ffc107', label: 'In Maint',   color: '#fff3cd' },
   AOG:        { bg: '#58151c', border: '#dc3545', label: 'AOG',        color: '#f8d7da' },
+  UNKNOWN: {bg:'#1f2937',border:'#64748b',label:'Unassigned source',color:'#cbd5e1'},
   EMPTY:      { bg: '#1f2937', border: '#374151', label: 'Empty',      color: '#9ca3af' },
 };
 
 function HangarStatusBoard({ token }) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        setLoading(true);
-        const r = await fetch(`${API}/custom-views/hangar-status-board`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const j = await r.json();
-        if (!cancelled) setData(j);
-      } catch (e) {
-        if (!cancelled) setErr(e.message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [token]);
+  const {data,loading,error:err,reload}=useNativeCustomView('hangar-status-board',token,value=>Array.isArray(value?.hangars)&&Array.isArray(value?.bays)&&value.summary&&typeof value.summary==='object');
 
   if (loading) return <div style={{ color: '#94a3b8' }}>Loading hangar board...</div>;
-  if (err) return <div style={{ color: '#f87171' }}>Error: {err}</div>;
+  if (err) return <div role="alert"><strong>Native saved sources could not be loaded.</strong><p>{err}</p><button type="button" className="btn btn-secondary" onClick={reload}>Retry</button></div>;
   if (!data) return null;
 
   const { hangars = [], bays = [], summary = {} } = data;
@@ -46,11 +28,13 @@ function HangarStatusBoard({ token }) {
 
   return (
     <div style={{ color: '#e5e7eb' }}>
+      <p>Slots are derived from saved capacity and aircraft location references. Specific bay assignment and operational clearance remain unverified.</p>
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <SummaryChip label="Total Bays" value={summary.total_bays} color="#60a5fa" />
         <SummaryChip label="In Service" value={summary.in_service} color="#22c55e" />
         <SummaryChip label="In Maint"   value={summary.in_maint}   color="#facc15" />
         <SummaryChip label="AOG"        value={summary.aog}        color="#ef4444" />
+        <SummaryChip label="Unknown allocation" value={summary.unknown} color="#94a3b8" />
         <SummaryChip label="Empty"      value={summary.empty}      color="#64748b" />
       </div>
 
@@ -94,7 +78,7 @@ function HangarStatusBoard({ token }) {
                     padding: 8,
                     minHeight: 72,
                   }}>
-                    <div style={{ fontSize: 10, color: st.color, fontWeight: 600 }}>BAY {bay.bay_number}</div>
+                    <div style={{ fontSize: 10, color: st.color, fontWeight: 600 }}>Planning slot {bay.bay_number}</div>
                     <div style={{ fontSize: 12, color: '#fff', fontWeight: 700, marginTop: 2 }}>
                       {bay.aircraft_reg || '-'}
                     </div>

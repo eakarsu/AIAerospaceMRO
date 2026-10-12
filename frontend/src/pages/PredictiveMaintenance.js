@@ -1,8 +1,14 @@
+import useNativeSources from '../services/useNativeSources';
+import useCancellableAIRequest from '../services/useCancellableAIRequest';
+import CompleteAIExamples, { AIRequiredButton } from "../components/CompleteAIExamples";
 import React, { useState } from 'react';
 import { API } from '../App';
 
 function PredictiveMaintenance({ token }) {
+  const { request: nativeRequest, cancel: cancelAI, busy: aiRequestBusy } = useCancellableAIRequest();
   const [aircraftId, setAircraftId] = useState('');
+  const { rows: fleetSources, loading: sourceLoading, error: sourceError, retry: retrySources } = useNativeSources(`${API}/fleet-health?limit=100`, token);
+  const registrations = [...new Set(fleetSources.map(row => row.aircraft_reg).filter(Boolean))];
   const [lookahead, setLookahead] = useState(90);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -18,7 +24,7 @@ function PredictiveMaintenance({ token }) {
     setLoading(true);
     setResult(null);
     try {
-      const res = await fetch(`${API}/ai/predict-maintenance`, {
+      const res = await nativeRequest(`${API}/ai/predict-maintenance`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -31,6 +37,7 @@ function PredictiveMaintenance({ token }) {
       setResult(data);
       setToast({ type: 'success', message: 'Prediction generated' });
     } catch (err) {
+      if (err.name === 'AbortError') return;
       setToast({ type: 'error', message: err.message });
     } finally {
       setLoading(false);
@@ -42,6 +49,7 @@ function PredictiveMaintenance({ token }) {
 
   return (
     <div className="fade-in">
+      {aiRequestBusy && <div role="status" className="ai-loading">Generating with OpenRouter… <button type="button" className="btn btn-secondary" onClick={cancelAI}>Cancel AI request</button></div>}
       {toast && <div className={`toast toast-${toast.type}`}>{toast.message}</div>}
 
       <div className="page-header">
@@ -51,23 +59,25 @@ function PredictiveMaintenance({ token }) {
         </div>
       </div>
 
-      <form onSubmit={submit} style={{ background: 'var(--bg-card)', padding: 24, borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+      {sourceError && <section role="alert" className="native-load-error"><strong>Aircraft sources could not be loaded.</strong><p>{sourceError}</p><button type="button" className="btn btn-secondary" onClick={retrySources}>Retry</button></section>}
+      {sourceLoading && <p role="status">Loading genuine saved aircraft…</p>}
+      {!sourceLoading && !sourceError && !registrations.length && <p role="status">Save a native fleet-health record before requesting a maintenance forecast.</p>}
+      <CompleteAIExamples busy={loading || sourceLoading || Boolean(sourceError) || !registrations.length} context="MRO maintenance review"><form onSubmit={submit} style={{ background: 'var(--bg-card)', padding: 24, borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
           <div className="form-group">
             <label>Aircraft Registration</label>
-            <input type="text" value={aircraftId} onChange={e => setAircraftId(e.target.value)}
-              placeholder="e.g. N12345" required />
+            <select data-ai-field="aircraftId" value={aircraftId} onChange={e => setAircraftId(e.target.value)} required><option value="">Select a saved aircraft…</option>{registrations.map(registration => <option key={registration} value={registration}>{registration}</option>)}</select>
           </div>
           <div className="form-group">
             <label>Lookahead Days</label>
-            <input type="number" value={lookahead} onChange={e => setLookahead(e.target.value)}
+            <input data-ai-field="lookahead" type="number" value={lookahead} onChange={e => setLookahead(e.target.value)}
               min="1" max="365" />
           </div>
         </div>
-        <button type="submit" className="btn btn-primary" disabled={loading}>
+        <AIRequiredButton data-ai-generate type="submit" className="btn btn-primary" disabled={loading}>
           {loading ? 'Predicting...' : 'Run Prediction'}
-        </button>
-      </form>
+        </AIRequiredButton>
+      </form></CompleteAIExamples>
 
       {loading && <div className="ai-loading" style={{ marginTop: 24 }}>Analyzing {aircraftId} maintenance history...</div>}
 

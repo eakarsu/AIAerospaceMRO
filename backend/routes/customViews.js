@@ -5,6 +5,8 @@ const auth = require('../middleware/auth');
 const PDFDocument = require('pdfkit');
 
 router.use(auth);
+router.use(require('../middleware/nativeAICancellation'));
+const nativeRequisitions=require('../services/nativeRequisitions.cjs');
 
 // =========================================================================
 // 1) HANGAR STATUS BOARD - bays with aircraft + status
@@ -55,8 +57,8 @@ router.get('/hangar-status-board', async (req, res) => {
           else if (s.includes('scheduled')) status = 'IN_MAINT';
           else status = 'IN_SERVICE';
         } else if (i <= (h.current_occupancy || 0)) {
-          status = 'IN_SERVICE';
-          aircraft_reg = h.aircraft_reg || `BAY-${h.hangar_code}-${i}`;
+          status = 'UNKNOWN';
+          aircraft_reg = null;
         }
         bays.push({
           hangar_id: h.id,
@@ -73,6 +75,7 @@ router.get('/hangar-status-board', async (req, res) => {
 
     const summary = {
       total_bays: bays.length,
+      unknown: bays.filter(b=>b.status==='UNKNOWN').length,
       in_service: bays.filter(b => b.status === 'IN_SERVICE').length,
       in_maint: bays.filter(b => b.status === 'IN_MAINT').length,
       aog: bays.filter(b => b.status === 'AOG').length,
@@ -200,7 +203,7 @@ router.get('/work-orders/:id/pdf', async (req, res) => {
     }
     const wo = woResult.rows[0];
 
-    // Pull related parts (any inventory items for the aircraft)
+    // Inventory reference catalog; these parts are not claimed to be allocated to this work order.
     const parts = await pool.query(
       `SELECT part_number, part_name, category, unit_cost, quantity
          FROM inventory
@@ -229,7 +232,7 @@ router.get('/work-orders/:id/pdf', async (req, res) => {
     doc.text(`Maintenance Type: ${wo.maintenance_type || '-'}`);
     doc.text(`Priority: ${wo.priority || '-'}    Status: ${wo.status || '-'}`);
     doc.text(`Assigned Technician: ${wo.assigned_to || 'Unassigned'}`);
-    doc.text(`Estimated Hours: ${wo.estimated_hours || 0}    Actual Hours: ${wo.actual_hours || 0}`);
+    doc.text(`Estimated Hours: ${wo.estimated_hours ?? 'Not supplied'}    Actual Hours: ${wo.actual_hours ?? 'Not measured'}`);
     doc.text(`Start: ${wo.start_date || '-'}    Target: ${wo.target_completion || '-'}    Completed: ${wo.completed_date || '-'}`);
     doc.moveDown(0.5);
 
@@ -244,7 +247,7 @@ router.get('/work-orders/:id/pdf', async (req, res) => {
     doc.moveDown(0.6);
 
     // Parts table
-    doc.fontSize(12).fillColor('#1e3a8a').text('Parts Used', { underline: true });
+    doc.fontSize(12).fillColor('#1e3a8a').text('Inventory catalog reference - not allocated to this work order', { underline: true });
     doc.moveDown(0.3);
     doc.fontSize(10).fillColor('#000');
     const tableTop = doc.y;
@@ -261,7 +264,7 @@ router.get('/work-orders/:id/pdf', async (req, res) => {
       doc.text((p.part_name || '-').substring(0, 28), 130, y, { width: 185 });
       doc.text(p.category || '-', 320, y, { width: 95 });
       doc.text(String(p.quantity ?? '-'), 420, y, { width: 45 });
-      doc.text(`$${Number(p.unit_cost || 0).toFixed(2)}`, 470, y, { width: 70 });
+      doc.text(p.unit_cost==null?'Unknown':`$${Number(p.unit_cost).toFixed(2)}`, 470, y, { width: 70 });
       doc.moveDown(0.4);
     });
 
@@ -270,9 +273,9 @@ router.get('/work-orders/:id/pdf', async (req, res) => {
     doc.fontSize(12).fillColor('#1e3a8a').text('Cost Summary', { underline: true });
     doc.moveDown(0.2);
     doc.fontSize(10).fillColor('#000');
-    doc.text(`Labor Cost:  $${Number(wo.labor_cost || 0).toFixed(2)}`);
-    doc.text(`Parts Cost:  $${Number(wo.parts_cost || 0).toFixed(2)}`);
-    doc.text(`Total Cost:  $${(Number(wo.labor_cost || 0) + Number(wo.parts_cost || 0)).toFixed(2)}`);
+    doc.text(`Labor Cost:  ${wo.labor_cost==null?'Not recorded':'$'+Number(wo.labor_cost).toFixed(2)}`);
+    doc.text(`Parts Cost:  ${wo.parts_cost==null?'Not recorded':'$'+Number(wo.parts_cost).toFixed(2)}`);
+    doc.text(`Total Cost:  ${wo.labor_cost==null||wo.parts_cost==null?'Not recorded':'$'+(Number(wo.labor_cost)+Number(wo.parts_cost)).toFixed(2)}`);
 
     // Signoff
     doc.moveDown(2);
@@ -388,34 +391,8 @@ router.post('/requisition/check', async (req, res) => {
   }
 });
 
-router.post('/requisition/submit', async (req, res) => {
-  try {
-    const { aircraft_reg, requested_by, priority, items, notes } = req.body || {};
-    if (!aircraft_reg || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: 'aircraft_reg and items required' });
-    }
-    // Synthesize a requisition (does not modify other tables).
-    const requisition_id = `REQ-${Date.now().toString(36).toUpperCase()}`;
-    const total = items.reduce(
-      (s, i) => s + Number(i.unit_cost || 0) * Number(i.quantity || 0),
-      0
-    );
-    res.json({
-      success: true,
-      requisition_id,
-      aircraft_reg,
-      requested_by: requested_by || 'system',
-      priority: priority || 'Medium',
-      submitted_at: new Date().toISOString(),
-      line_count: items.length,
-      total_cost: total,
-      notes: notes || null,
-      status: 'SUBMITTED',
-    });
-  } catch (err) {
-    console.error('requisition/submit error:', err.message);
-    res.status(500).json({ error: 'Failed to submit requisition' });
-  }
-});
-
-module.exports = router;
+router.get('/requisition/saved',async(req,res)=>{try{await pool.query(nativeRequisitions.STORAGE_SQL);const rows=(await pool.query('SELECT * FROM native_parts_requisitions WHERE user_id=$1 ORDER BY created_at DESC,id DESC LIMIT 100',[req.user.id])).rows;res.json({items:rows.map(nativeRequisitions.present)});}catch(error){res.status(503).json({error:'Native planning drafts could not be loaded.'});}});
+router.post('/requisition/submit',async(req,res)=>{try{const item=await nativeRequisitions.save({pool,userId:req.user.id,payload:req.body,signal:req.aiSignal});res.status(201).json(item);}catch(error){if(!req.aiSignal?.aborted)res.status(error.status||503).json({error:error.status?error.message:'The planning draft could not be saved. Check the database.'});}});
+router.put('/requisition/saved/:id',async(req,res)=>{try{if(!/^[1-9]\d*$/.test(req.params.id))return res.status(400).json({error:'Invalid planning draft.'});const item=await nativeRequisitions.save({pool,userId:req.user.id,payload:req.body,id:req.params.id,signal:req.aiSignal});res.json(item);}catch(error){if(!req.aiSignal?.aborted)res.status(error.status||503).json({error:error.status?error.message:'The planning draft could not be saved. Check the database.'});}});
+router.delete('/requisition/saved/:id',async(req,res)=>{try{if(!/^[1-9]\d*$/.test(req.params.id))return res.status(400).json({error:'Invalid planning draft.'});const deleted=await pool.query("DELETE FROM native_parts_requisitions WHERE id=$1 AND user_id=$2 AND status='DRAFT' RETURNING id",[req.params.id,req.user.id]);if(!deleted.rows.length)return res.status(404).json({error:'Owned planning draft not found.'});res.json({deleted:true});}catch(error){res.status(503).json({error:'The planning draft could not be deleted. Check the database.'});}});
+module.exports=router;
