@@ -47,12 +47,17 @@ router.get('/', async (req, res) => {
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
     const offset = (page - 1) * limit;
 
-    const countResult = await pool.query('SELECT COUNT(*)::int AS total FROM work_orders');
+    const filters = []; const params = [];
+    if (req.query.status) { params.push(req.query.status); filters.push(`status = $${params.length}`); }
+    if (req.query.priority) { params.push(req.query.priority); filters.push(`priority = $${params.length}`); }
+    if (req.query.q || req.query.search) { params.push(`%${req.query.q || req.query.search}%`); filters.push(`(title ILIKE $${params.length} OR wo_number ILIKE $${params.length} OR aircraft_reg ILIKE $${params.length} OR description ILIKE $${params.length})`); }
+    const where = filters.length ? ` WHERE ${filters.join(' AND ')}` : '';
+    const countResult = await pool.query(`SELECT COUNT(*)::int AS total FROM work_orders${where}`, params);
     const total = countResult.rows[0].total;
 
     const result = await pool.query(
-      'SELECT * FROM work_orders ORDER BY created_at DESC LIMIT $1 OFFSET $2',
-      [limit, offset]
+      `SELECT * FROM work_orders${where} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset]
     );
     res.json({
       records: result.rows,

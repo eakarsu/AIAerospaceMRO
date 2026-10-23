@@ -53,6 +53,7 @@ app.use('/api/aircraft-maintenance', require('./routes/aircraftMaintenance'));
 app.use('/api/part-lifecycle', require('./routes/partLifecycle'));
 app.use('/api/compliance', require('./routes/compliance'));
 app.use('/api/work-orders', require('./routes/workOrders'));
+app.use('/api/feature-pack', require('./routes/featurePack'));
 app.use('/api/inventory', require('./routes/inventory'));
 app.use('/api/incidents', require('./routes/incidents'));
 app.use('/api/technicians', require('./routes/technicians'));

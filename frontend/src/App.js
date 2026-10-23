@@ -31,6 +31,7 @@ import ComplianceCalendar from './pages/ComplianceCalendar';
 import EtopsReleaseReadiness from './pages/EtopsReleaseReadiness';
 import AIHistory from './pages/AIHistory';
 import CustomViewsPage from './pages/CustomViewsPage';
+import FeaturePackPage from './pages/FeaturePackPage';
 import Layout from './components/Layout';
 
 import CodexCustomVizFeature from './pages/CodexCustomVizFeature';
@@ -99,6 +100,7 @@ function App() {
         <Route path="/etops-release-readiness" element={<EtopsReleaseReadiness token={token} />} />
         <Route path="/ai-history" element={<AIHistory token={token} />} />
         <Route path="/custom-views" element={<CustomViewsPage token={token} />} />
+        <Route path="/feature-pack" element={<FeaturePackPage />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Layout>
